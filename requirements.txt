@@ -1,0 +1,4 @@
+nltk
+pandas
+tqdm
+git+git://github.com/kudkudak/word-embeddings-benchmarks.git
