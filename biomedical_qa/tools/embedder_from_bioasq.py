@@ -3,9 +3,7 @@ import os
 import numpy as np
 import pickle
 
-from quebap.projects.autoread import WordEmbedder
-from quebap.projects.autoread.models.embedder import ConstantWordEmbedder
-from quebap.projects.autoread.util import *
+from biomedical_qa.embedder import WordEmbedder, ConstantWordEmbedder
 
 tf.app.flags.DEFINE_string('vocab_file', None, 'list file of words in vocab.')
 tf.app.flags.DEFINE_string('embedding_file', None, 'path to embeddings')
