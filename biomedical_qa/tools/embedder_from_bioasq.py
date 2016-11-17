@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pickle
 
-from biomedical_qa.embedder import WordEmbedder, ConstantWordEmbedder
+from biomedical_qa.models.embedder import WordEmbedder, ConstantWordEmbedder
 
 tf.app.flags.DEFINE_string('vocab_file', None, 'list file of words in vocab.')
 tf.app.flags.DEFINE_string('embedding_file', None, 'path to embeddings')
