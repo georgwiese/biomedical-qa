@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pickle
 
-from biomedical_qa.models.embedder import WordEmbedder, ConstantWordEmbedder
+from biomedical_qa.models.embedder import ConstantWordEmbedder
 from biomedical_qa.util import load_vocab
 
 tf.app.flags.DEFINE_integer('max_vocab', -1, 'maximum size of vocabulary used')
