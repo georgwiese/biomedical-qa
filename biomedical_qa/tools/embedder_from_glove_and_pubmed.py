@@ -60,7 +60,7 @@ with open(FLAGS.pubmed_embedding_file, "rb") as f:
             pubmed_embeddings = np.zeros([len(vocab), pubmed_embedding_size], np.float32)
         pubmed_embeddings[vocab.get(word)] = [float(v) for v in split]
 
-print("Concatenating both embeddings:")
+print("Concatenating both embeddings...")
 embeddings = np.concatenate((glove_embeddings, pubmed_embeddings), axis=1)
 print("Final embeddings shape:", embeddings.shape)
 
@@ -72,7 +72,7 @@ with tf.Session() as sess:
         os.mkdir(FLAGS.out_dir)
     config = embedder.get_config()
     with open(os.path.join(FLAGS.out_dir, "config.pickle"), 'wb') as f:
-        pickle.dump(config, f)
+        pickle.dump(config, f, protocol=2)
 
     embedder.model_saver.save(sess, os.path.join(FLAGS.out_dir, "model.tf"), write_meta_graph=False)
     print("Done")
