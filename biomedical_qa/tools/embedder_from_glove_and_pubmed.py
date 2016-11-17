@@ -72,7 +72,7 @@ with tf.Session() as sess:
         os.mkdir(FLAGS.out_dir)
     config = embedder.get_config()
     with open(os.path.join(FLAGS.out_dir, "config.pickle"), 'wb') as f:
-        pickle.dump(config, f, protocol=2)
+        pickle.dump(config, f, protocol=4)
 
     embedder.model_saver.save(sess, os.path.join(FLAGS.out_dir, "model.tf"), write_meta_graph=False)
     print("Done")
