@@ -139,7 +139,7 @@ with tf.Session(config=config) as sess:
 
     print("Initialized model.")
     with open(os.path.join(train_dir, "config.pickle"), 'wb') as f:
-        pickle.dump(model.get_config(), f)
+        pickle.dump(model.get_config(), f, protocol=4)
 
     best_path = []
     checkpoint_path = os.path.join(train_dir, "model.ckpt")
