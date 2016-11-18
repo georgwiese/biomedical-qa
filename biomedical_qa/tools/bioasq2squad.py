@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import logging
@@ -8,7 +9,10 @@ import numpy as np
 TRAIN_FRACTION = 0.8
 
 
-def convert_to_squad(bioasq_file_path):
+np.random.seed(1234)
+
+
+def convert_to_squad(bioasq_file_path, out_dir):
 
   with open(bioasq_file_path) as json_file:
     data = json.load(json_file)
@@ -16,12 +20,14 @@ def convert_to_squad(bioasq_file_path):
   paragraphs = build_paragraphs(data)
   train_paragraphs, dev_paragraphs = split_paragraphs(paragraphs)
 
-  with open("train.json", "w") as out_file:
+  os.makedirs(out_dir, exist_ok=True)
+
+  with open(os.path.join(out_dir, "train.json"), "w") as out_file:
     name = bioasq_file_path + " - train"
     result = build_result_object(name, train_paragraphs)
     json.dump(result, out_file, indent=2)
 
-  with open("dev.json", "w") as out_file:
+  with open(os.path.join(out_dir, "dev.json"), "w") as out_file:
     name = bioasq_file_path + " - dev"
     result = build_result_object(name, dev_paragraphs)
     json.dump(result, out_file, indent=2)
@@ -109,7 +115,7 @@ def build_paragraph(question):
 def get_context(question):
 
   snippets = [snippet["text"] for snippet in question["snippets"]]
-  return "\n".join(snippets)
+  return " ".join(snippets)
 
 
 def get_answers(question, context):
@@ -133,11 +139,13 @@ def get_answers(question, context):
 
   for answer in answers:
 
-    for start_position in find_all_substring_positions(context, answer.lower()):
+    answer = clean_answer(answer)
+
+    for start_position in find_all_substring_positions(context, answer):
       answer_objects += [
         {
           "answer_start": start_position,
-          "text": answer.lower()
+          "text": answer
         }
       ]
 
@@ -145,9 +153,27 @@ def get_answers(question, context):
     # Skip question
     logging.warning("Skipping question %s. No matching answer." %
                     question["id"])
+    # print("  Skipping question %s. No matching answer." %
+    #                 question["id"])
+    # print("  Q:", question["body"])
+    # print("  C:", context)
+    # print("  A:", answers)
+    # sys.stdout.flush()
     return None
 
   return answer_objects
+
+
+def clean_answer(answer):
+
+  answer = answer.strip().lower()
+  if answer.startswith("the "):
+    answer = answer[4:]
+  if re.search(r"[^\w]$", answer) is not None:
+    # Ends with punctuation
+    answer = answer[:-1]
+
+  return answer
 
 
 def find_all_substring_positions(string, substring):
@@ -155,16 +181,20 @@ def find_all_substring_positions(string, substring):
   if not len(substring):
     return []
 
-  search_string = "\\W%s\\W" % re.escape(substring)
-  return [m.start() + 1 for m in re.finditer(search_string, string)]
+  search_strings = ["\\W%s\\W" % re.escape(substring),
+                    "^%s\\W" % re.escape(substring),
+                    "\\W%s$" % re.escape(substring)]
+  return [m.start() + 1
+          for search_string in search_strings
+          for m in re.finditer(search_string, string)]
 
 
 if __name__ == "__main__":
 
-  if len(sys.argv) < 2:
+  if len(sys.argv) < 3:
 
-    print("Usage: %s <BioASQ json file>" % sys.argv[0])
+    print("Usage: %s <BioASQ json file> <out dir>" % sys.argv[0])
     exit(1)
 
-  bioasq_file_path = sys.argv[1]
-  convert_to_squad(bioasq_file_path)
+  _, bioasq_file_path, out_dir = sys.argv
+  convert_to_squad(bioasq_file_path, out_dir)
