@@ -9,7 +9,7 @@ from biomedical_qa.models import model_from_config
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 
-tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file.')
+tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file (augmented with question_type and original_answers fields).')
 tf.app.flags.DEFINE_string('transfer_model_config', None, 'Path to the Transfer Model config (needed for vocab).')
 tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
 tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
@@ -97,6 +97,7 @@ with tf.Session(config=config) as sess:
                 print("  Correct: ", correct_answers[i])
 
             if question_types[i] == "factoid":
+                # TODO: Implement MRR once ranked answers are implemented
                 factoid_total += 1
                 for correct_answer in correct_answers[i][0]:
                     if correct_answer.lower() == answer.lower():
@@ -106,6 +107,7 @@ with tf.Session(config=config) as sess:
                         break
 
             if question_types[i] == "list":
+                # TODO: Evaluate F1 once multiple answers are implemented
                 list_total += 1
                 for answer_option in correct_answers[i]:
                     for correct_answer in answer_option:
