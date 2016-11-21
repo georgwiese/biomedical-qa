@@ -18,10 +18,6 @@ def convert_to_squad(bioasq_file_path, out_dir):
     data = json.load(json_file)
 
   paragraphs = build_paragraphs(data)
-  num_factoid = len([p for p in paragraphs
-                     if p["qas"][0]["question_type"] == "factoid"])
-  num_list = len([p for p in paragraphs
-                  if p["qas"][0]["question_type"] == "list"])
   train_paragraphs, dev_paragraphs = split_paragraphs(paragraphs)
 
   os.makedirs(out_dir, exist_ok=True)
@@ -36,9 +32,18 @@ def convert_to_squad(bioasq_file_path, out_dir):
     result = build_result_object(name, dev_paragraphs)
     json.dump(result, out_file, indent=2)
 
-  print("Done. Extracted %d questions (%d train & %d dev) (%d factoid & %d list)"
-        % (len(paragraphs), len(train_paragraphs), len(dev_paragraphs),
-           num_factoid, num_list))
+  print("Done. Extracted %d questions (%d train & %d dev)"
+        % (len(paragraphs), len(train_paragraphs), len(dev_paragraphs)))
+
+  num_factoid_original = len([q for q in data["questions"] if q["type"] == "factoid"])
+  num_list_original = len([q for q in data["questions"] if q["type"] == "list"])
+  num_factoid = len([p for p in paragraphs
+                     if p["qas"][0]["question_type"] == "factoid"])
+  num_list = len([p for p in paragraphs
+                  if p["qas"][0]["question_type"] == "list"])
+
+  print("Used Factoid questions: %d / %d" % (num_factoid, num_factoid_original))
+  print("Used Lisr questions: %d / %d" % (num_list, num_list_original))
 
 
 def split_paragraphs(paragraphs):
