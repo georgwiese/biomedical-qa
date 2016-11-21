@@ -7,7 +7,8 @@ from biomedical_qa.models import QASetting
 
 
 class SQuADSampler:
-    def __init__(self, dir, filenames, batch_size, vocab, instances_per_epoch=None):
+    def __init__(self, dir, filenames, batch_size, vocab,
+                 instances_per_epoch=None, shuffle=True):
         self.__batch_size = batch_size
         self.unk_id = vocab["<UNK>"]
         self.start_id = vocab["<S>"]
@@ -53,7 +54,8 @@ class SQuADSampler:
                             answers.append(answer)
                     self._qas.append(QASetting(trfm(qa["question"])[0], answers, context, answer_spans))
 
-        self._rng.shuffle(self._qas)
+        if shuffle:
+            self._rng.shuffle(self._qas)
         if instances_per_epoch is not None:
             self._qas = self._qas[:instances_per_epoch]
         self._idx = 0

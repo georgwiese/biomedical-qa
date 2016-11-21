@@ -124,7 +124,7 @@ class ExtractionQATrainer(Trainer):
             print("")
         return -f1
 
-    def get_feed_dict(self, qa_settings, is_eval=False):
+    def get_feed_dict(self, qa_settings):
         answer_starts = []
         answer_ends = []
         answer_partition = []
@@ -167,5 +167,5 @@ class ExtractionQATrainer(Trainer):
 
         return feed_dict
 
-    def run(self, sess, goal, qa_settings, is_eval=False):
-        return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings, is_eval=is_eval))
+    def run(self, sess, goal, qa_settings):
+        return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings))
