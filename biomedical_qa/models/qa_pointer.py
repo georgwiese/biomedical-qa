@@ -1,21 +1,17 @@
-import tensorflow as tf
 from tensorflow.python.ops.rnn_cell import *
 from tensorflow.python.ops.rnn import *
 
 from biomedical_qa.models.attention import *
-from biomedical_qa.models.embedder import WordEmbedder
 from biomedical_qa.models.context_embedder import ContextEmbedder
 from biomedical_qa.models.qa_model import ExtractionQAModel
-from biomedical_qa.models.rnn_cell import ParamAssociativeMemory, MultiConcatRNNCell, ParamNTM, BackwardNTM, \
-    DynamicPointerRNN
+from biomedical_qa.models.rnn_cell import DynamicPointerRNN
 from biomedical_qa.models.transfer import gated_transfer
-from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 from biomedical_qa import tfutil
 import numpy as np
 
 class QAPointerModel(ExtractionQAModel):
 
-    def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None, num_slots=0,
+    def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None,
                  composition="GRU", devices=None, name="QAPointerModel", depends_on=[]):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
@@ -23,7 +19,6 @@ class QAPointerModel(ExtractionQAModel):
         self._device2 = devices[2 % len(devices)] if devices is not None else "/cpu:0"
         self._depends_on = depends_on
         self._transfer_layer_size = size if transfer_layer_size is None else transfer_layer_size
-        self._num_slots = num_slots
 
         ExtractionQAModel.__init__(self, size, transfer_model, keep_prob, name)
 
@@ -43,6 +38,7 @@ class QAPointerModel(ExtractionQAModel):
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
+                    # Q: Why constant initializer? How do we achieve symmetry breaking?
                     null_word = tf.get_variable("NULL_WORD", shape=[self.embedded_question.get_shape()[2]],
                                                 initializer=tf.constant_initializer(0.0))
                     tiled_null_word = tf.tile(null_word, [self._batch_size])
@@ -53,17 +49,9 @@ class QAPointerModel(ExtractionQAModel):
                     rev_embedded_question = tf.concat(1, [reshaped_null_word, rev_embedded_question])
                     embedded_question = tf.reverse_sequence(rev_embedded_question, self.question_length, 1)
 
-                    transfer_input = None
-                    if isinstance(self.transfer_model, QAPointerModel):
-                        transfer_input = self.transfer_model.encoded_question
-                    elif isinstance(self.question_embedder, ContextEmbedder):
-                        zero_padding = tf.zeros(shape=[1, 1, self.question_embedder.output.get_shape()[2]])
-                        tiled_zero_padding = tf.tile(zero_padding, tf.pack([self._batch_size, 1, 1]))
-                        transfer_input = tf.concat(1, [self.question_embedder.output, tiled_zero_padding])
-
-                    self.encoded_question, self.question_fw_weights, self.question_bw_weights = \
-                        self._preprocessing_layer(cell_constructor, embedded_question, self.question_length + 1,
-                                                  transfer_input, projection_scope="question_proj")
+                    self.encoded_question = self._preprocessing_layer(
+                        cell_constructor, embedded_question,
+                        self.question_length + 1, projection_scope="question_proj")
 
                     # single time attention over question
                     enc_question = tf.slice(self.encoded_question, [0, 0, 0], [-1, -1, self.size])
@@ -82,21 +70,16 @@ class QAPointerModel(ExtractionQAModel):
                     rev_embedded_context = tf.concat(1, [reshaped_null_word, rev_embedded_context])
                     embedded_context = tf.reverse_sequence(rev_embedded_context, self.context_length, 1)
 
-                    transfer_input = None
-                    if isinstance(self.transfer_model, QAPointerModel):
-                        transfer_input = self.transfer_model.encoded_ctxt
-                    elif isinstance(self.embedder, ContextEmbedder):
-                        zero_padding = tf.zeros(shape=[1, 1, self.embedder.output.get_shape()[2]])
-                        tiled_zero_padding = tf.tile(zero_padding, tf.pack([self._batch_size, 1, 1]))
-                        transfer_input = tf.concat(1, [self.embedder.output, tiled_zero_padding])
-
+                    # Q: Who uses this? Why should we append the null word at beginning and end?
                     self.embedded_context = tf.concat(1, [self.embedded_context, reshaped_null_word])
-                    self.encoded_ctxt, self.ctxt_fw_weights, self.ctxt_bw_weights = \
-                        self._preprocessing_layer(cell_constructor, embedded_context, self.context_length + 1,
-                                                  transfer_input, share_rnn=True, projection_scope="context_proj")
+                    self.encoded_ctxt = self._preprocessing_layer(
+                        cell_constructor, embedded_context, self.context_length + 1,
+                        share_rnn=True, projection_scope="context_proj")
 
                 with tf.variable_scope("match_layer"):
-                    self.matched_output = self._match_layer(self.encoded_question, self.encoded_ctxt, cell_constructor)
+                    self.matched_output = self._match_layer(
+                        self.encoded_question, self.encoded_ctxt,
+                        cell_constructor)
 
                 with tf.variable_scope("pointer_layer"):
                     self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
@@ -104,117 +87,38 @@ class QAPointerModel(ExtractionQAModel):
 
                 self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
 
-    def _preprocessing_layer(self, cell_constructor, inputs, length, transfer_input=None, share_rnn=False,
+    def _preprocessing_layer(self, cell_constructor, inputs, length, share_rnn=False,
                              projection_scope=None):
-        if self._num_slots > 0:
-            with tf.variable_scope("memory") as vs:
-                if share_rnn:
-                    vs.reuse_variables()
 
-                bw_outputs = dynamic_rnn(cell_constructor(self.size), tf.reverse_sequence(inputs, length, 1),
-                                         length, dtype=tf.float32, time_major=False)[0]
+        # Q: Again, why constant initializer?
+        projection_initializer = tf.constant_initializer(np.concatenate([np.eye(self.size), np.eye(self.size)]))
+        cell = cell_constructor(self.size)
+        with tf.variable_scope("RNN") as vs:
+            if share_rnn:
+                vs.reuse_variables()
+            # Does this do use the same weights for forward & backward? Because
+            # same cell instance is passed
+            encoded = bidirectional_dynamic_rnn(cell, cell, inputs, length,
+                                                dtype=tf.float32, time_major=False)[0]
+        encoded = tf.concat(2, encoded)
+        projected = tf.contrib.layers.fully_connected(encoded, self.size,
+                                                      activation_fn=tf.tanh,
+                                                      weights_initializer=projection_initializer,
+                                                      scope=projection_scope)
 
-                fw_inputs = tf.concat(2, [tf.reverse_sequence(bw_outputs, length, 1), inputs])
-                cell_fw = ParamNTM(self._num_slots, self.size, fw_inputs.get_shape()[2].value, cell_constructor(self.size))
-                with tf.variable_scope("forward"):
-                    fw_memory, last_state = dynamic_rnn(cell_fw, fw_inputs, length, dtype=tf.float32, time_major=False)
-                fw_weights = bw_weights = tf.slice(fw_memory, [0, 0, cell_fw.output_size - self._num_slots],
-                                                   [-1, -1, -1])
-                fw_memory = tf.slice(fw_memory, [0, 0, 0], [-1, -1, cell_fw.output_size - self._num_slots])
-
-                last_ctr_state, last_memory, last_ctr_out, _ = last_state
-
-                inputs_bw = tf.reverse_sequence(fw_memory, length - 1, 1)
-                start_state = tf.split(1, self._num_slots, last_memory)
-                cell_bw = BackwardNTM(self._num_slots, self.size)
-                with tf.variable_scope("backward"):
-                    partial_memory_bw = \
-                        dynamic_rnn(cell_bw, inputs_bw, length - 1, initial_state=start_state, time_major=False)[0]
-                    last_memory = tf.expand_dims(tf.concat(1, [last_state[2], last_state[1]]), 1)
-                    #last memory comes from dummy word and should be set to zero
-                    last_memory = tf.concat(2, [tf.slice(last_memory, [0, 0, 0], [-1, -1, self.size]),
-                                                tf.zeros_like(tf.slice(last_memory, [0, 0, self.size], [-1, -1, -1]))])
-                    memory_bw = tf.concat(1, [last_memory, partial_memory_bw])
-                    memory_bw = tf.slice(memory_bw, [0, 0, 0], tf.shape(partial_memory_bw))
-                    memory = tf.reverse_sequence(memory_bw, length, 1)
-                    memory.set_shape([None, None, (self._num_slots + 1) * self.size])
-
-            return memory, fw_weights, bw_weights
-        else:
-            if transfer_input is not None:
-                if self._transfer_layer_size <= 0:
-                    encoded_dropped = tf.nn.dropout(transfer_input, self.keep_prob)
-                    projected = tf.contrib.layers.fully_connected(encoded_dropped, self.size,
-                                                                  activation_fn=tf.tanh,
-                                                                  weights_initializer=None,
-                                                                  scope=projection_scope)
-                else:
-                    cell = cell_constructor(self._transfer_layer_size)
-                    with tf.variable_scope("RNN") as vs:
-                        if share_rnn:
-                            vs.reuse_variables()
-                        encoded = bidirectional_dynamic_rnn(cell, cell, inputs, length,
-                                                            dtype=tf.float32, time_major=False)[0]
-                    with tf.variable_scope(projection_scope or "projection"):
-                        projected = \
-                            gated_transfer(2, list(encoded), transfer_input, self.keep_prob,
-                                           self.size, 2 * self._transfer_layer_size, activation_fn=tf.tanh)
-
-            else:
-                projection_initializer = tf.constant_initializer(np.concatenate([np.eye(self.size), np.eye(self.size)]))
-                cell = cell_constructor(self.size)
-                with tf.variable_scope("RNN") as vs:
-                    if share_rnn:
-                        vs.reuse_variables()
-                    encoded = bidirectional_dynamic_rnn(cell, cell, inputs, length,
-                                                        dtype=tf.float32, time_major=False)[0]
-                encoded = tf.concat(2, encoded)
-                projected = tf.contrib.layers.fully_connected(encoded, self.size,
-                                                              activation_fn=tf.tanh,
-                                                              weights_initializer=projection_initializer,
-                                                              scope=projection_scope)
-
-            return projected, None, None
+        return projected
 
     def _match_layer(self, encoded_question, encoded_ctxt, cell_constructor):
         size = self.size
-        if isinstance(self.transfer_model, QAPointerModel):
-            if self._transfer_layer_size <= 0:
-                return tf.nn.dropout(self.transfer_model.matched_output, self.keep_prob)
-            else:
-                size = self._transfer_layer_size
 
-        if self._num_slots > 0:
-            eye_initializer = tf.constant_initializer(np.eye(self.size))
-            split_question = tf.split(2, self._num_slots + 1, encoded_question)
-            context_state_rep = tf.slice(encoded_ctxt, [0, 0, 0], [-1, -1, self.size])
-            inter_question_memories = []
-            for i, q in enumerate(split_question):
-                inter_question_memories.append(tf.contrib.layers.fully_connected(q, self.size,
-                                                                                 activation_fn=None,
-                                                                                 weights_initializer=eye_initializer,
-                                                                                 biases_initializer=None,
-                                                                                 scope="inter_states_%d" % i))
-            inter_question_memories = tf.concat(2, inter_question_memories)
-
-            affinity_scores = tf.batch_matmul(encoded_ctxt, inter_question_memories, adj_y=True)
-            matched_output = extract_co_attention_states(affinity_scores, context_state_rep, self.context_length + 1,
-                                                         split_question[0], self.question_length + 1)
-        else:
-            matched_output = dot_co_attention(encoded_ctxt, self.context_length + 1,
-                                              encoded_question, self.question_length + 1)
+        matched_output = dot_co_attention(encoded_ctxt, self.context_length + 1,
+                                          encoded_question, self.question_length + 1)
         matched_output = tf.nn.bidirectional_dynamic_rnn(cell_constructor(size),
                                                          cell_constructor(size),
                                                          matched_output, sequence_length=self.context_length,
                                                          dtype=tf.float32)[0]
         matched_output = tf.concat(2, matched_output)
         matched_output.set_shape([None, None, 2 * size])
-
-        if isinstance(self.transfer_model, QAPointerModel):
-            matched_output = gated_transfer(2, matched_output,
-                                            self.transfer_model.matched_output,
-                                            self.keep_prob,
-                                            2 * self.size)
 
         return matched_output
 
@@ -254,6 +158,7 @@ class QAPointerModel(ExtractionQAModel):
             u = tf.concat(1, [u_s, u_e])
 
             if i > 0:
+                # Once is_stable is true, it'll stay stable
                 is_stable = tf.logical_or(is_stable, tf.logical_and(tf.equal(next_start, current_start),
                                                                     tf.equal(next_end, current_end)))
                 is_stable_int = tf.cast(is_stable, tf.int64)
@@ -304,7 +209,6 @@ class QAPointerModel(ExtractionQAModel):
     def get_config(self):
         config = super().get_config()
         config["type"] = "pointer"
-        config["num_slots"] = self._num_slots
         config["composition"] = self._composition
         return config
 
@@ -315,7 +219,7 @@ class QAPointerModel(ExtractionQAModel):
         :return:
         """
         # size, max_answer_length, embedder, keep_prob, name="QAModel", reuse=False
-        from quebap.projects.autoread import model_from_config, model_from_config
+        from biomedical_qa.models import model_from_config
         transfer_model = model_from_config(config["transfer_model"], devices)
         if transfer_model is None:
             transfer_model = model_from_config(config["transfer_model"], devices)
@@ -324,7 +228,6 @@ class QAPointerModel(ExtractionQAModel):
             transfer_model=transfer_model,
             name=config["name"],
             composition=config["composition"],
-            num_slots=config.get("num_slots", 0),
             keep_prob=1.0 - dropout,
             devices=devices)
 

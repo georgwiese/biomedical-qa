@@ -359,6 +359,9 @@ class DynamicPointerRNN(RNNCell):
         with tf.variable_scope(scope or type(self).__name__):
             ctr_out, ctr_state = self._ctr_cell(u, prev_ctr_state)
 
+            # Q: This predicts (s_1, e_1) -> (s_2, e_2) -> ...
+            # instead of s_1 -> e_1 -> s_2 -> e_2 -> ..., correct?
+            # Q: Paper uses 2 layers, any particular reason for deviating?
             with tf.variable_scope("start"):
                 next_start_scores = _highway_maxout_network(1, self._pool_size, tf.concat(1, [u, ctr_out]),
                                                             self._input_states, self._lengths, self._max_length_32,

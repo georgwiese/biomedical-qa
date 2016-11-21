@@ -49,7 +49,6 @@ tf.app.flags.DEFINE_integer("max_vocab", -1, "Maximum vocab size if no embedder 
 tf.app.flags.DEFINE_integer("max_instances", None, "Maximum number of training instances.")
 tf.app.flags.DEFINE_integer("subsample_validation", None, "Maximum number of validation instances.")
 tf.app.flags.DEFINE_integer("max_epochs", 40, "Maximum number of epochs.")
-tf.app.flags.DEFINE_integer("num_slots", 5, "Number of memory slots.")
 
 #embedder
 tf.app.flags.DEFINE_boolean("transfer_qa", False, "Tranfer-model (if given) is a QAModel")
@@ -102,15 +101,15 @@ with tf.Session(config=config) as sess:
     if test_fns:
         print("Test sets: (first 100)", test_fns[:100])
         test_sampler = SQuADSampler(FLAGS.data, test_fns, FLAGS.batch_size, vocab, FLAGS.max_instances)
-    
+
     embedder_device = devices[0]
     if len(devices) > 1:
         devices = devices[1:]
 
     print("Creating model with name %s..." % FLAGS.name)
     model = QAPointerModel(FLAGS.size, transfer_model, devices=devices, name=FLAGS.name,
-                           keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition, num_slots=FLAGS.num_slots)
-    
+                           keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition)
+
     trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0], FLAGS.transfer_model_lr)
 
     print("Created %s!" % type(model).__name__)
