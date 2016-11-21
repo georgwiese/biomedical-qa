@@ -13,6 +13,7 @@ tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 
 tf.app.flags.DEFINE_integer("batch_size", 32, "Number of examples in each batch.")
+tf.app.flags.DEFINE_integer("subsample", -1, "Number of samples to do the evaluation on.")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -43,6 +44,6 @@ with tf.Session(config=config) as sess:
     trainer = ExtractionQATrainer(0, model, devices[0])
 
     print("Running SQuAD Evaluation...")
-    trainer.eval(sess, valid_sampler, verbose=True)
+    trainer.eval(sess, valid_sampler, subsample=FLAGS.subsample, verbose=True)
 
 
