@@ -38,7 +38,6 @@ class QAPointerModel(ExtractionQAModel):
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
-                    # Q: Why constant initializer? How do we achieve symmetry breaking?
                     null_word = tf.get_variable("NULL_WORD", shape=[self.embedded_question.get_shape()[2]],
                                                 initializer=tf.constant_initializer(0.0))
                     tiled_null_word = tf.tile(null_word, [self._batch_size])
@@ -70,8 +69,6 @@ class QAPointerModel(ExtractionQAModel):
                     rev_embedded_context = tf.concat(1, [reshaped_null_word, rev_embedded_context])
                     embedded_context = tf.reverse_sequence(rev_embedded_context, self.context_length, 1)
 
-                    # Q: Who uses this? Why should we append the null word at beginning and end?
-                    self.embedded_context = tf.concat(1, [self.embedded_context, reshaped_null_word])
                     self.encoded_ctxt = self._preprocessing_layer(
                         cell_constructor, embedded_context, self.context_length + 1,
                         share_rnn=True, projection_scope="context_proj")
@@ -90,7 +87,6 @@ class QAPointerModel(ExtractionQAModel):
     def _preprocessing_layer(self, cell_constructor, inputs, length, share_rnn=False,
                              projection_scope=None):
 
-        # Q: Again, why constant initializer?
         projection_initializer = tf.constant_initializer(np.concatenate([np.eye(self.size), np.eye(self.size)]))
         cell = cell_constructor(self.size)
         with tf.variable_scope("RNN") as vs:
