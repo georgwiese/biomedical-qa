@@ -169,7 +169,8 @@ with tf.Session(config=config) as sess:
         print("####################################")
         trainer.model.set_train(sess)
 
-        [dev_summary] = sess.run([dev_f1_summary], {dev_f1_placeholder: l})
+        # trainer.eval() returns negative f1
+        [dev_summary] = sess.run([dev_f1_summary], {dev_f1_placeholder: -l})
         dev_summary_writer.add_summary(dev_summary, global_step)
 
         if not best_path or l < min(previous_loss):

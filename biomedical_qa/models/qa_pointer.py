@@ -49,7 +49,7 @@ class QAPointerModel(ExtractionQAModel):
                     # question
                     rev_embedded_question = tf.reverse_sequence(self.embedded_question, self.question_length, 1)
                     rev_embedded_question = tf.concat(1, [reshaped_null_word, rev_embedded_question])
-                    embedded_question = tf.reverse_sequence(rev_embedded_question, self.question_length, 1)
+                    embedded_question = tf.reverse_sequence(rev_embedded_question, self.question_length + 1, 1)
 
                     self.encoded_question = self._preprocessing_layer(
                         cell_constructor, embedded_question,
