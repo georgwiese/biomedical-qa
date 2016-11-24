@@ -41,3 +41,52 @@ def text_heatmap(tokens, scores, token_highlight=None):
                            color=color,
                            horizontalalignment='center',
                            verticalalignment='center')
+    
+    
+def print_question(batch, rev_vocab):
+    question = [rev_vocab[w] for w in batch[0].question]
+    print("Question:")
+    print(' '.join(question))
+    print()
+
+def print_answers(batch, rev_vocab):
+    answers = [' '.join([rev_vocab[w] for w in a]) for a in batch[0].answers]
+    print("Answers:")
+    print(answers)
+    print()
+
+def print_predicted(batch, answer_start, answer_end, rev_vocab):
+    predicted =  " ".join([rev_vocab[i] for i in batch[0].context[answer_start:answer_end+1]])
+    print("Predicted:")
+    print(predicted)
+    print()
+
+def print_context(batch, rev_vocab):
+    context = [rev_vocab[w] for w in batch[0].context]
+    print("Context:")
+    print(' '.join(context))
+    print()
+    
+    
+def softmax(w):
+    e = np.exp(w)
+    dist = e / np.sum(e)
+    return dist
+
+def find_correct_tokens(batch):
+    """Returns a boolean np array of length len(tokens) that states if the token is part of an answer."""
+    answers = batch[0].answers
+    tokens = batch[0].context
+    
+    is_correct = np.zeros(len(tokens), dtype=np.bool)
+    for i, start_token in enumerate(tokens):
+        for answer in answers:
+            if start_token == answer[0] and len(tokens) - i >= len(answer):
+                all_correct = True
+                for j in range(1, len(answer)):
+                    all_correct &= tokens[i + j] == answer[j]
+                if all_correct:
+                    for j in range(0, len(answer)):
+                        is_correct[i + j] = True
+    
+    return is_correct
