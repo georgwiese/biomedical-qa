@@ -52,7 +52,9 @@ class SQuADSampler:
                                 continue
                             answer_spans.append((start, start + len(answer)))
                             answers.append(answer)
-                    self._qas.append(QASetting(trfm(qa["question"])[0], answers, context, answer_spans))
+                    self._qas.append(QASetting(trfm(qa["question"])[0], answers,
+                                               context, answer_spans,
+                                               id=qa["id"]))
 
         if shuffle:
             self._rng.shuffle(self._qas)

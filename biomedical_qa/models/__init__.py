@@ -14,7 +14,8 @@ class QASetting:
     def __init__(self, question, answers, context,
                  answer_spans=None,
                  answer_candidates=None,
-                 answer_candidate_spans=None):
+                 answer_candidate_spans=None,
+                 id=None):
         """
         :param question: list of indices
         :param answers:  list of list of indices
@@ -27,6 +28,7 @@ class QASetting:
         self.answer_spans = answer_spans
         self.answer_candidates = answer_candidates
         self.answer_candidate_spans = answer_candidate_spans
+        self.id = id
 
     def translate(self, vocab, unk_id):
         self.question = [vocab.get(w, unk_id) for w in self.question]
