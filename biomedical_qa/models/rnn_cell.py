@@ -338,7 +338,8 @@ class DynamicPointerRNN(RNNCell):
     """
     """
 
-    def __init__(self, size, pool_size, ctr_cell, input_states, lengths):
+    def __init__(self, size, pool_size, ctr_cell, input_states, lengths,
+                 num_layers):
         self._ctr_cell = ctr_cell
         self._size = size
         self._input_states = input_states
@@ -346,6 +347,7 @@ class DynamicPointerRNN(RNNCell):
         self._max_length_32 = tf.cast(self._max_length, tf.int32)
         self._lengths = lengths
         self._pool_size = pool_size
+        self._num_layers = num_layers
 
     @property
     def state_size(self):
@@ -361,14 +363,16 @@ class DynamicPointerRNN(RNNCell):
 
             # Use just 1 layer for memory reasons, paper uses 2
             with tf.variable_scope("start"):
-                next_start_scores = _highway_maxout_network(1, self._pool_size, tf.concat(1, [u, ctr_out]),
-                                                            self._input_states, self._lengths, self._max_length_32,
-                                                            self._size)
+                next_start_scores = _highway_maxout_network(
+                    self._num_layers, self._pool_size, tf.concat(1, [u, ctr_out]),
+                    self._input_states, self._lengths, self._max_length_32,
+                    self._size)
 
             with tf.variable_scope("end"):
-                next_end_scores = _highway_maxout_network(1, self._pool_size, tf.concat(1, [u, ctr_out]),
-                                                          self._input_states, self._lengths, self._max_length_32,
-                                                          self._size)
+                next_end_scores = _highway_maxout_network(
+                    self._num_layers, self._pool_size, tf.concat(1, [u, ctr_out]),
+                    self._input_states, self._lengths, self._max_length_32,
+                    self._size)
 
         return (next_start_scores, next_end_scores), ctr_state
 

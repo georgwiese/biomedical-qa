@@ -12,13 +12,16 @@ import numpy as np
 class QAPointerModel(ExtractionQAModel):
 
     def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None,
-                 composition="GRU", devices=None, name="QAPointerModel", depends_on=[]):
+                 composition="GRU", devices=None, name="QAPointerModel", depends_on=[],
+                 answer_layer_depth=1, answer_layer_poolsize=8):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1 % len(devices)] if devices is not None else "/cpu:0"
         self._device2 = devices[2 % len(devices)] if devices is not None else "/cpu:0"
         self._depends_on = depends_on
         self._transfer_layer_size = size if transfer_layer_size is None else transfer_layer_size
+        self._answer_layer_depth = answer_layer_depth
+        self._answer_layer_poolsize = answer_layer_poolsize
 
         ExtractionQAModel.__init__(self, size, transfer_model, keep_prob, name)
 
@@ -126,7 +129,10 @@ class QAPointerModel(ExtractionQAModel):
         context_states_flat = tf.reshape(context_states, [-1, context_states.get_shape()[-1].value])
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length) + 1)
 
-        pointer_rnn = DynamicPointerRNN(self.size, 8, controller_cell, context_states, self.context_length + 1)
+        pointer_rnn = DynamicPointerRNN(self.size, self._answer_layer_poolsize,
+                                        controller_cell, context_states,
+                                        self.context_length + 1,
+                                        self._answer_layer_depth)
 
         cur_state = question_state
         u = tf.zeros(tf.pack([self._batch_size, 2 * input_size]))
@@ -206,6 +212,8 @@ class QAPointerModel(ExtractionQAModel):
         config = super().get_config()
         config["type"] = "pointer"
         config["composition"] = self._composition
+        config["answer_layer_depth"] = self._answer_layer_depth
+        config["answer_layer_poolsize"] = self._answer_layer_poolsize
         return config
 
     @staticmethod
@@ -215,6 +223,13 @@ class QAPointerModel(ExtractionQAModel):
         :return:
         """
         # size, max_answer_length, embedder, keep_prob, name="QAModel", reuse=False
+
+        # Set defaults for backword compatibility
+        if "answer_layer_depth" not in config:
+            config["answer_layer_depth"] = 1
+        if "answer_layer_poolsize" not in config:
+            config["answer_layer_poolsize"] = 8
+
         from biomedical_qa.models import model_from_config
         transfer_model = model_from_config(config["transfer_model"], devices)
         if transfer_model is None:
@@ -225,6 +240,8 @@ class QAPointerModel(ExtractionQAModel):
             name=config["name"],
             composition=config["composition"],
             keep_prob=1.0 - dropout,
-            devices=devices)
+            devices=devices,
+            answer_layer_depth=config["answer_layer_depth"],
+            answer_layer_poolsize=config["answer_layer_poolsize"])
 
         return qa_model

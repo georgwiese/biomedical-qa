@@ -29,6 +29,9 @@ tf.app.flags.DEFINE_integer("max_length", 30, "max length of answer or question 
 tf.app.flags.DEFINE_string("composition", 'GRU', "'LSTM', 'GRU'")
 tf.app.flags.DEFINE_string("name", "QAModel", "Name of the model.")
 
+tf.app.flags.DEFINE_integer("answer_layer_depth", 1, "Number of layer in the answer layer")
+tf.app.flags.DEFINE_integer("answer_layer_poolsize", 8, "Maxout poolsize in answer layer")
+
 #training
 tf.app.flags.DEFINE_float("dropout", 0.0, "Dropout.")
 tf.app.flags.DEFINE_float("learning_rate", 1e-3, "Learning rate.")
@@ -108,7 +111,9 @@ with tf.Session(config=config) as sess:
 
     print("Creating model with name %s..." % FLAGS.name)
     model = QAPointerModel(FLAGS.size, transfer_model, devices=devices, name=FLAGS.name,
-                           keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition)
+                           keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
+                           answer_layer_depth=FLAGS.answer_layer_depth,
+                           answer_layer_poolsize=FLAGS.answer_layer_poolsize)
 
     trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0], FLAGS.transfer_model_lr)
 
