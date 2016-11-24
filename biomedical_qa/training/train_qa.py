@@ -114,6 +114,17 @@ with tf.Session(config=config) as sess:
 
     print("Created %s!" % type(model).__name__)
 
+    print("Setting up summary writer...")
+    summaries = tf.merge_all_summaries()
+    train_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/train',
+                                                  sess.graph)
+
+    # Weird workaround, not sure if there is a better way...
+    dev_f1_placeholder = tf.placeholder(dtype=tf.float32, shape=[])
+    dev_f1_summary = tf.scalar_summary("valid_f1_mean", dev_f1_placeholder)
+    dev_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/dev',
+                                                  sess.graph)
+
     print("Initializing variables ...")
     sess.run(tf.initialize_all_variables())
     if FLAGS.transfer_model_path is not None:
@@ -146,12 +157,15 @@ with tf.Session(config=config) as sess:
     previous_loss = list()
     epoch = 0
 
-    def validate():
+    def validate(global_step):
         # Run evals on development set and print(their perplexity.)
         print("########## Validation ##############")
         l = trainer.eval(sess, valid_sampler, verbose=True)#, subsample=min(10000, FLAGS.batch_size * 100))
         print("####################################")
         trainer.model.set_train(sess)
+
+        [dev_summary] = sess.run([dev_f1_summary], {dev_f1_placeholder: l})
+        dev_summary_writer.add_summary(dev_summary, global_step)
 
         if not best_path or l < min(previous_loss):
             if best_path:
@@ -185,7 +199,11 @@ with tf.Session(config=config) as sess:
         start_time = time.time()
         batch = sampler.get_batch()
         # already fetch next batch parallel to running model
-        loss += trainer.run(sess, [trainer.update, trainer.loss], batch)[1]
+        goals = [trainer.update, trainer.loss]
+        if i % FLAGS.ckpt_its == 0:
+            goals += [summaries]
+        results = trainer.run(sess, goals, batch)
+        loss += results[1]
 
         step_time += (time.time() - start_time)
 
@@ -193,16 +211,20 @@ with tf.Session(config=config) as sess:
         sys.stdout.flush()
 
         if i % FLAGS.ckpt_its == 0:
+            global_step = trainer.global_step.eval()
+            batch_summary = results[2]
+            train_summary_writer.add_summary(batch_summary, global_step)
+
             epochs += 1
             i = 0
             loss /= FLAGS.ckpt_its
             print("")
             step_time /= FLAGS.ckpt_its
-            print("global step %d learning rate %.5f, step-time %.3f, loss %.4f" % (trainer.global_step.eval(),
+            print("global step %d learning rate %.5f, step-time %.3f, loss %.4f" % (global_step,
                                                                                     trainer.learning_rate.eval(),
                                                                                     step_time, loss))
             step_time, loss = 0.0, 0.0
-            result = validate()
+            result = validate(global_step)
             if result > ckpt_result and epochs >= FLAGS.max_epochs:
                 print("Stop learning!")
                 break

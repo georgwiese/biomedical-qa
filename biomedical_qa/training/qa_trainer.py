@@ -90,6 +90,11 @@ class ExtractionQATrainer(Trainer):
 
         self._all_saver = tf.train.Saver(tf.all_variables(), max_to_keep=2)
 
+        with tf.name_scope("summaries"):
+            tf.scalar_summary("loss", self._loss)
+            tf.scalar_summary("train_f1_mean", self.mean_f1)
+            tf.histogram_summary("train_f1", self.f1)
+
     @property
     def loss(self):
         return self._loss
