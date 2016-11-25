@@ -120,17 +120,11 @@ with tf.Session(config=config) as sess:
     print("Created %s!" % type(model).__name__)
 
     print("Setting up summary writer...")
-    summaries = tf.merge_all_summaries()
+    train_summaries = tf.merge_all_summaries()
     train_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/train',
                                                   sess.graph)
-
-    # Weird workaround, not sure if there is a better way...
-    dev_f1_placeholder = tf.placeholder(dtype=tf.float32, shape=[])
-    dev_exact_placeholder = tf.placeholder(dtype=tf.float32, shape=[])
-    dev_f1_summary = tf.scalar_summary("valid_f1_mean", dev_f1_placeholder)
-    dev_exact_summary = tf.scalar_summary("valid_f1_mean", dev_exact_placeholder)
     dev_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/dev',
-                                                  sess.graph)
+                                                sess.graph)
 
     print("Initializing variables ...")
     sess.run(tf.initialize_all_variables())
@@ -171,8 +165,9 @@ with tf.Session(config=config) as sess:
         print("####################################")
         trainer.model.set_train(sess)
 
-        [dev_summary] = sess.run([dev_f1_summary], {dev_f1_placeholder: f1,
-                                                    dev_exact_placeholder: exact})
+        dev_summary = tf.Summary()
+        dev_summary.value.add(tag="valid_f1_mean", simple_value=f1)
+        dev_summary.value.add(tag="valid_exact_mean", simple_value=exact)
         dev_summary_writer.add_summary(dev_summary, global_step)
 
         l = -f1
@@ -210,7 +205,7 @@ with tf.Session(config=config) as sess:
         # already fetch next batch parallel to running model
         goals = [trainer.update, trainer.loss]
         if i % FLAGS.ckpt_its == 0:
-            goals += [summaries]
+            goals += [train_summaries]
         results = trainer.run(sess, goals, batch)
         loss += results[1]
 
