@@ -125,9 +125,10 @@ class ExtractionQATrainer(Trainer):
                 sys.stdout.flush()
 
         f1 = f1 / total
+        exact = exact / total
         if verbose:
             print("")
-        return -f1
+        return f1, exact
 
     def get_feed_dict(self, qa_settings):
         answer_starts = []

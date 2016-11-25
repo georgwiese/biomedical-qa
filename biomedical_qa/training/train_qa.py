@@ -126,7 +126,9 @@ with tf.Session(config=config) as sess:
 
     # Weird workaround, not sure if there is a better way...
     dev_f1_placeholder = tf.placeholder(dtype=tf.float32, shape=[])
+    dev_exact_placeholder = tf.placeholder(dtype=tf.float32, shape=[])
     dev_f1_summary = tf.scalar_summary("valid_f1_mean", dev_f1_placeholder)
+    dev_exact_summary = tf.scalar_summary("valid_f1_mean", dev_exact_placeholder)
     dev_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/dev',
                                                   sess.graph)
 
@@ -165,14 +167,15 @@ with tf.Session(config=config) as sess:
     def validate(global_step):
         # Run evals on development set and print(their perplexity.)
         print("########## Validation ##############")
-        l = trainer.eval(sess, valid_sampler, verbose=True)#, subsample=min(10000, FLAGS.batch_size * 100))
+        f1, exact = trainer.eval(sess, valid_sampler, verbose=True)#, subsample=min(10000, FLAGS.batch_size * 100))
         print("####################################")
         trainer.model.set_train(sess)
 
-        # trainer.eval() returns negative f1
-        [dev_summary] = sess.run([dev_f1_summary], {dev_f1_placeholder: -l})
+        [dev_summary] = sess.run([dev_f1_summary], {dev_f1_placeholder: f1,
+                                                    dev_exact_placeholder: exact})
         dev_summary_writer.add_summary(dev_summary, global_step)
 
+        l = -f1
         if not best_path or l < min(previous_loss):
             if best_path:
                 best_path[0] = trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step,
