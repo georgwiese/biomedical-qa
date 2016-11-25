@@ -41,19 +41,10 @@ class QAPointerModel(ExtractionQAModel):
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
-                    null_word = tf.get_variable("NULL_WORD", shape=[self.embedded_question.get_shape()[2]],
-                                                initializer=tf.constant_initializer(0.0))
-                    tiled_null_word = tf.tile(null_word, [self._batch_size])
-                    reshaped_null_word = tf.reshape(tiled_null_word, [-1, 1, null_word.get_shape()[0].value])
-
-                    # question
-                    rev_embedded_question = tf.reverse_sequence(self.embedded_question, self.question_length, 1)
-                    rev_embedded_question = tf.concat(1, [reshaped_null_word, rev_embedded_question])
-                    embedded_question = tf.reverse_sequence(rev_embedded_question, self.question_length + 1, 1)
 
                     self.encoded_question = self._preprocessing_layer(
-                        cell_constructor, embedded_question,
-                        self.question_length + 1, projection_scope="question_proj")
+                        cell_constructor, self.embedded_question,
+                        self.question_length, projection_scope="question_proj")
 
                     # single time attention over question
                     enc_question = tf.slice(self.encoded_question, [0, 0, 0], [-1, -1, self.size])
@@ -67,14 +58,18 @@ class QAPointerModel(ExtractionQAModel):
                     attention_weights = tf.expand_dims(attention_weights, 2)
                     self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
 
-                    # context
-                    rev_embedded_context = tf.reverse_sequence(self.embedded_context, self.context_length, 1)
-                    rev_embedded_context = tf.concat(1, [reshaped_null_word, rev_embedded_context])
-                    embedded_context = tf.reverse_sequence(rev_embedded_context, self.context_length, 1)
-
                     self.encoded_ctxt = self._preprocessing_layer(
-                        cell_constructor, embedded_context, self.context_length + 1,
+                        cell_constructor, self.embedded_context, self.context_length,
                         share_rnn=True, projection_scope="context_proj")
+
+                    # Append NULL word
+                    null_word = tf.get_variable(
+                        "NULL_WORD", shape=[self.encoded_ctxt.get_shape()[2]],
+                        initializer=tf.constant_initializer(0.0))
+                    self.encoded_question, self.question_length = self.append_null_word(
+                        self.encoded_question, self.question_length, null_word)
+                    self.encoded_ctxt, self.context_length = self.append_null_word(
+                        self.encoded_ctxt, self.context_length, null_word)
 
                 with tf.variable_scope("match_layer"):
                     self.matched_output = self._match_layer(
@@ -86,6 +81,18 @@ class QAPointerModel(ExtractionQAModel):
                         self._answer_layer(self.question_representation, self.matched_output)
 
                 self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
+
+    def append_null_word(self, tensor, lengths, null_word):
+
+        tiled_null_word = tf.tile(null_word, [self._batch_size])
+        reshaped_null_word = tf.reshape(tiled_null_word,
+                                        [-1, 1, null_word.get_shape()[0].value])
+
+        rev_tensor = tf.reverse_sequence(tensor, lengths, 1)
+        rev_tensor = tf.concat(1, [reshaped_null_word, rev_tensor])
+        new_tensor = tf.reverse_sequence(rev_tensor, lengths + 1, 1)
+
+        return new_tensor, lengths + 1
 
     def _preprocessing_layer(self, cell_constructor, inputs, length, share_rnn=False,
                              projection_scope=None):
@@ -110,8 +117,8 @@ class QAPointerModel(ExtractionQAModel):
     def _match_layer(self, encoded_question, encoded_ctxt, cell_constructor):
         size = self.size
 
-        matched_output = dot_co_attention(encoded_ctxt, self.context_length + 1,
-                                          encoded_question, self.question_length + 1)
+        matched_output = dot_co_attention(encoded_ctxt, self.context_length,
+                                          encoded_question, self.question_length)
         matched_output = tf.nn.bidirectional_dynamic_rnn(cell_constructor(size),
                                                          cell_constructor(size),
                                                          matched_output, sequence_length=self.context_length,
@@ -127,11 +134,12 @@ class QAPointerModel(ExtractionQAModel):
         controller_cell = GRUCell(question_state.get_shape()[1].value)
         input_size = context_states.get_shape()[-1].value
         context_states_flat = tf.reshape(context_states, [-1, context_states.get_shape()[-1].value])
-        offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length) + 1)
+        offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length))
 
+        # Note: This can theoretically also select the null word
         pointer_rnn = DynamicPointerRNN(self.size, self._answer_layer_poolsize,
                                         controller_cell, context_states,
-                                        self.context_length + 1,
+                                        self.context_length,
                                         self._answer_layer_depth)
 
         cur_state = question_state
