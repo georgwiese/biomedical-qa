@@ -2,10 +2,9 @@ from tensorflow.python.ops.rnn_cell import *
 from tensorflow.python.ops.rnn import *
 
 from biomedical_qa.models.attention import *
-from biomedical_qa.models.context_embedder import ContextEmbedder
 from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.models.rnn_cell import DynamicPointerRNN
-from biomedical_qa.models.transfer import gated_transfer
+from biomedical_qa.models.rnn_cell import _highway_maxout_network
 from biomedical_qa import tfutil
 import numpy as np
 
@@ -13,7 +12,8 @@ class QAPointerModel(ExtractionQAModel):
 
     def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None,
                  composition="GRU", devices=None, name="QAPointerModel", depends_on=[],
-                 answer_layer_depth=1, answer_layer_poolsize=8):
+                 answer_layer_depth=1, answer_layer_poolsize=8,
+                 answer_layer_type="dpn"):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1 % len(devices)] if devices is not None else "/cpu:0"
@@ -22,6 +22,7 @@ class QAPointerModel(ExtractionQAModel):
         self._transfer_layer_size = size if transfer_layer_size is None else transfer_layer_size
         self._answer_layer_depth = answer_layer_depth
         self._answer_layer_poolsize = answer_layer_poolsize
+        self._answer_layer_type = answer_layer_type
 
         ExtractionQAModel.__init__(self, size, transfer_model, keep_prob, name)
 
@@ -38,6 +39,8 @@ class QAPointerModel(ExtractionQAModel):
             self._eval = tf.get_variable("is_eval", initializer=False, trainable=False)
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
+
+            self.correct_start_pointer = tf.placeholder(tf.int32)
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
@@ -77,8 +80,14 @@ class QAPointerModel(ExtractionQAModel):
                         cell_constructor)
 
                 with tf.variable_scope("pointer_layer"):
-                    self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
-                        self._answer_layer(self.question_representation, self.matched_output)
+                    if self._answer_layer_type == "dpn":
+                        self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
+                            self._dpn_answer_layer(self.question_representation, self.matched_output)
+                    elif self._answer_layer_type == "spn":
+                        self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
+                            self._spn_answer_layer(self.question_representation, self.matched_output)
+                    else:
+                        raise ValueError("Unknown answer layer type: %s" % self._answer_layer_type)
 
                 self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
 
@@ -128,7 +137,7 @@ class QAPointerModel(ExtractionQAModel):
 
         return matched_output
 
-    def _answer_layer(self, question_state, context_states):
+    def _dpn_answer_layer(self, question_state, context_states):
         context_states = tf.nn.dropout(context_states, self.keep_prob)
         # dynamic pointing decoder
         controller_cell = GRUCell(question_state.get_shape()[1].value)
@@ -186,6 +195,30 @@ class QAPointerModel(ExtractionQAModel):
 
         return start_scores, end_scores, start_pointer, end_pointer
 
+    def _spn_answer_layer(self, question_state, context_states):
+        # TODO: Implement
+        context_states = tf.nn.dropout(context_states, self.keep_prob)
+        context_shape = tf.shape(context_states)
+
+        question_state_input = tf.tile(question_state, context_shape[0])
+        question_state_input = tf.reshape(question_state_input,
+                                          [context_shape[0], -1])
+
+        start_scores = _highway_maxout_network(self._answer_layer_depth,
+                                               self._answer_layer_poolsize,
+                                               question_state_input,
+                                               context_states,
+                                               self.context_length,
+                                               context_shape[1],
+                                               self.size)
+
+        predicted_start_pointer = tf.argmax(start_scores, 1)
+        start_pointer = tf.cond(self._eval, predicted_start_pointer, self.correct_start_pointer)
+
+
+
+        #return start_scores, end_scores, predicted_start_pointer, end_pointer
+
     def set_eval(self, sess):
         super().set_eval(sess)
         sess.run(self._set_eval)
@@ -222,6 +255,7 @@ class QAPointerModel(ExtractionQAModel):
         config["composition"] = self._composition
         config["answer_layer_depth"] = self._answer_layer_depth
         config["answer_layer_poolsize"] = self._answer_layer_poolsize
+        config["answer_layer_type"] = self._answer_layer_type
         return config
 
     @staticmethod
@@ -237,6 +271,8 @@ class QAPointerModel(ExtractionQAModel):
             config["answer_layer_depth"] = 1
         if "answer_layer_poolsize" not in config:
             config["answer_layer_poolsize"] = 8
+        if "answer_layer_type" not in config:
+            config["answer_layer_type"] = "dpn"
 
         from biomedical_qa.models import model_from_config
         transfer_model = model_from_config(config["transfer_model"], devices)
@@ -250,6 +286,7 @@ class QAPointerModel(ExtractionQAModel):
             keep_prob=1.0 - dropout,
             devices=devices,
             answer_layer_depth=config["answer_layer_depth"],
-            answer_layer_poolsize=config["answer_layer_poolsize"])
+            answer_layer_poolsize=config["answer_layer_poolsize"],
+            answer_layer_type=config["answer_layer_type"])
 
         return qa_model

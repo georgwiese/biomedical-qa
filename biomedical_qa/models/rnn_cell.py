@@ -361,7 +361,6 @@ class DynamicPointerRNN(RNNCell):
         with tf.variable_scope(scope or type(self).__name__):
             ctr_out, ctr_state = self._ctr_cell(u, prev_ctr_state)
 
-            # Use just 1 layer for memory reasons, paper uses 2
             with tf.variable_scope("start"):
                 next_start_scores = _highway_maxout_network(
                     self._num_layers, self._pool_size, tf.concat(1, [u, ctr_out]),
