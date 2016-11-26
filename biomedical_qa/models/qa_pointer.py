@@ -40,7 +40,7 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            self.correct_start_pointer = tf.placeholder(tf.int32)
+            self.correct_start_pointer = tf.placeholder(tf.int64, shape=[None])
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
@@ -196,28 +196,47 @@ class QAPointerModel(ExtractionQAModel):
         return start_scores, end_scores, start_pointer, end_pointer
 
     def _spn_answer_layer(self, question_state, context_states):
-        # TODO: Implement
+
+        # Fed during training
+        self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
+
         context_states = tf.nn.dropout(context_states, self.keep_prob)
         context_shape = tf.shape(context_states)
+        input_size = context_states.get_shape()[-1].value
+        context_states_flat = tf.reshape(context_states, [-1, input_size])
+        offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) \
+                  * (tf.reduce_max(self.context_length))
+        offsets = tf.gather(offsets, self.answer_partition)
 
-        question_state_input = tf.tile(question_state, context_shape[0])
-        question_state_input = tf.reshape(question_state_input,
-                                          [context_shape[0], -1])
+        def hmn(input, states):
+            return _highway_maxout_network(self._answer_layer_depth,
+                                           self._answer_layer_poolsize,
+                                           input,
+                                           states,
+                                           self.context_length,
+                                           context_shape[1],
+                                           self.size)
 
-        start_scores = _highway_maxout_network(self._answer_layer_depth,
-                                               self._answer_layer_poolsize,
-                                               question_state_input,
-                                               context_states,
-                                               self.context_length,
-                                               context_shape[1],
-                                               self.size)
+        with tf.variable_scope("start"):
+            start_scores = hmn(question_state, context_states)
+
+        start_scores = tf.gather(start_scores, self.answer_partition)
 
         predicted_start_pointer = tf.argmax(start_scores, 1)
-        start_pointer = tf.cond(self._eval, predicted_start_pointer, self.correct_start_pointer)
+        start_pointer = tf.cond(self._eval,
+                                lambda: predicted_start_pointer,
+                                lambda: self.correct_start_pointer)
+        u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
+        with tf.variable_scope("end"):
+            question_state = tf.gather(question_state, self.answer_partition)
+            context_states = tf.gather(context_states, self.answer_partition)
+            end_input = tf.concat(1, [u_s, question_state])
+            end_scores = hmn(end_input, context_states)
 
+        end_pointer = tf.argmax(start_scores, 1)
 
-        #return start_scores, end_scores, predicted_start_pointer, end_pointer
+        return start_scores, end_scores, predicted_start_pointer, end_pointer
 
     def set_eval(self, sess):
         super().set_eval(sess)
