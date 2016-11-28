@@ -13,7 +13,7 @@ class QAPointerModel(ExtractionQAModel):
     def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None,
                  composition="GRU", devices=None, name="QAPointerModel", depends_on=[],
                  answer_layer_depth=1, answer_layer_poolsize=8,
-                 answer_layer_type="dpn", beam_search_size=5):
+                 answer_layer_type="dpn"):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1 % len(devices)] if devices is not None else "/cpu:0"
@@ -23,7 +23,6 @@ class QAPointerModel(ExtractionQAModel):
         self._answer_layer_depth = answer_layer_depth
         self._answer_layer_poolsize = answer_layer_poolsize
         self._answer_layer_type = answer_layer_type
-        self._beam_search_size = beam_search_size
 
         ExtractionQAModel.__init__(self, size, transfer_model, keep_prob, name)
 
@@ -41,9 +40,7 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            # Fed during training
             self.correct_start_pointer = tf.placeholder(tf.int64, shape=[None])
-            self.answer_partition = tf.placeholder(tf.int64, shape=[None])
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
@@ -158,10 +155,7 @@ class QAPointerModel(ExtractionQAModel):
         current_start, current_end = None, None
         start_scores, end_scores = [], []
 
-        eval_answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
-        answer_partition = tf.cond(self._eval,
-                                   eval_answer_partition,
-                                   self.answer_partition)
+        self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
 
         for i in range(4):
             if i > 0:
@@ -203,20 +197,18 @@ class QAPointerModel(ExtractionQAModel):
                 current_start = next_start
                 current_end = next_end
 
-            start_scores.append(tf.gather(next_start_scores, answer_partition))
-            end_scores.append(tf.gather(next_end_scores, answer_partition))
+            start_scores.append(tf.gather(next_start_scores, self.answer_partition))
+            end_scores.append(tf.gather(next_end_scores, self.answer_partition))
 
-        end_pointer = tf.gather(current_end, answer_partition)
-        start_pointer = tf.gather(current_start, answer_partition)
+        end_pointer = tf.gather(current_end, self.answer_partition)
+        start_pointer = tf.gather(current_start, self.answer_partition)
 
         return start_scores, end_scores, start_pointer, end_pointer
 
     def _spn_answer_layer(self, question_state, context_states):
 
-        eval_answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
-        answer_partition = tf.cond(self._eval,
-                                   eval_answer_partition,
-                                   self.answer_partition)
+        # Fed during training
+        self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
 
         context_states = tf.nn.dropout(context_states, self.keep_prob)
         context_shape = tf.shape(context_states)
@@ -224,7 +216,7 @@ class QAPointerModel(ExtractionQAModel):
         context_states_flat = tf.reshape(context_states, [-1, input_size])
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) \
                   * (tf.reduce_max(self.context_length))
-        offsets = tf.gather(offsets, answer_partition)
+        offsets = tf.gather(offsets, self.answer_partition)
 
         def hmn(input, states):
             return _highway_maxout_network(self._answer_layer_depth,
@@ -238,7 +230,7 @@ class QAPointerModel(ExtractionQAModel):
         with tf.variable_scope("start"):
             start_scores = hmn(question_state, context_states)
 
-        start_scores = tf.gather(start_scores, answer_partition)
+        start_scores = tf.gather(start_scores, self.answer_partition)
 
         predicted_start_pointer = tf.argmax(start_scores, 1)
         start_pointer = tf.cond(self._eval,
@@ -247,8 +239,8 @@ class QAPointerModel(ExtractionQAModel):
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
         with tf.variable_scope("end"):
-            question_state = tf.gather(question_state, answer_partition)
-            context_states = tf.gather(context_states, answer_partition)
+            question_state = tf.gather(question_state, self.answer_partition)
+            context_states = tf.gather(context_states, self.answer_partition)
             end_input = tf.concat(1, [u_s, question_state])
             end_scores = hmn(end_input, context_states)
 
