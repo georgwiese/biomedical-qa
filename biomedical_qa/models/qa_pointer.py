@@ -147,12 +147,6 @@ class QAPointerModel(ExtractionQAModel):
         context_states_flat = tf.reshape(context_states, [-1, context_states.get_shape()[-1].value])
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length))
 
-        # Note: This can theoretically also select the null word
-        # pointer_rnn = DynamicPointerRNN(self.size, self._answer_layer_poolsize,
-        #                                 controller_cell, context_states,
-        #                                 self.context_length,
-        #                                 self._answer_layer_depth)
-
         cur_state = question_state
         u = tf.zeros(tf.pack([self._batch_size, 2 * input_size]))
         u_e = tf.zeros(tf.pack([self._batch_size, input_size]))
@@ -169,6 +163,7 @@ class QAPointerModel(ExtractionQAModel):
             ctr_out, cur_state = controller_cell(u, cur_state)
 
             with tf.variable_scope("start"):
+                # Note: This can theoretically also select the null word
                 next_start_scores = _highway_maxout_network(
                     self._answer_layer_depth, self._answer_layer_poolsize,
                     tf.concat(1, [u, ctr_out]), context_states, self.context_length,
