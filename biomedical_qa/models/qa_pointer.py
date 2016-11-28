@@ -244,7 +244,7 @@ class QAPointerModel(ExtractionQAModel):
             end_input = tf.concat(1, [u_s, question_state])
             end_scores = hmn(end_input, context_states)
 
-        end_pointer = tf.argmax(start_scores, 1)
+        end_pointer = tf.argmax(end_scores, 1)
 
         return start_scores, end_scores, predicted_start_pointer, end_pointer
 
