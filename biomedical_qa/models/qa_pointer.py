@@ -139,6 +139,8 @@ class QAPointerModel(ExtractionQAModel):
 
     def _dpn_answer_layer(self, question_state, context_states):
         context_states = tf.nn.dropout(context_states, self.keep_prob)
+        max_length = tf.cast(tf.reduce_max(self.context_length), tf.int32)
+
         # dynamic pointing decoder
         controller_cell = GRUCell(question_state.get_shape()[1].value)
         input_size = context_states.get_shape()[-1].value
@@ -146,13 +148,14 @@ class QAPointerModel(ExtractionQAModel):
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length))
 
         # Note: This can theoretically also select the null word
-        pointer_rnn = DynamicPointerRNN(self.size, self._answer_layer_poolsize,
-                                        controller_cell, context_states,
-                                        self.context_length,
-                                        self._answer_layer_depth)
+        # pointer_rnn = DynamicPointerRNN(self.size, self._answer_layer_poolsize,
+        #                                 controller_cell, context_states,
+        #                                 self.context_length,
+        #                                 self._answer_layer_depth)
 
         cur_state = question_state
         u = tf.zeros(tf.pack([self._batch_size, 2 * input_size]))
+        u_e = tf.zeros(tf.pack([self._batch_size, input_size]))
         is_stable = tf.constant(False, tf.bool, [1])
         is_stable = tf.tile(is_stable, tf.pack([tf.cast(self._batch_size, tf.int32)]))
         current_start, current_end = None, None
@@ -163,16 +166,28 @@ class QAPointerModel(ExtractionQAModel):
         for i in range(4):
             if i > 0:
                 tf.get_variable_scope().reuse_variables()
-            (next_start_scores, next_end_scores), cur_state = \
-                pointer_rnn(u, cur_state)
+            ctr_out, cur_state = controller_cell(u, cur_state)
+
+            with tf.variable_scope("start"):
+                next_start_scores = _highway_maxout_network(
+                    self._answer_layer_depth, self._answer_layer_poolsize,
+                    tf.concat(1, [u, ctr_out]), context_states, self.context_length,
+                    max_length, self.size)
 
             next_start = tf.arg_max(next_start_scores, 1)
-            next_end_scores_heuristic = next_end_scores + tfutil.mask_for_lengths(next_start,
-                                                                                  max_length=self.embedder.max_length + 1,
-                                                                                  mask_right=False)
+            u_s = tf.gather(context_states_flat, next_start + offsets)
+            u = tf.concat(1, [u_s, u_e])
+
+            with tf.variable_scope("end"):
+                next_end_scores = _highway_maxout_network(
+                    self._answer_layer_depth, self._answer_layer_poolsize,
+                    tf.concat(1, [u, ctr_out]), context_states, self.context_length,
+                    max_length, self.size)
+
+            next_end_scores_heuristic = next_end_scores + tfutil.mask_for_lengths(
+                next_start, max_length=self.embedder.max_length + 1, mask_right=False)
             next_end = tf.arg_max(next_end_scores_heuristic, 1)
 
-            u_s = tf.gather(context_states_flat, next_start + offsets)
             u_e = tf.gather(context_states_flat, next_end + offsets)
             u = tf.concat(1, [u_s, u_e])
 
