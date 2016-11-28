@@ -164,7 +164,7 @@ class ExtractionQATrainer(Trainer):
                 filtered_qa_settings.append(qa_setting)
 
         feed_dict = self.model.get_feed_dict(filtered_qa_settings)
-        feed_dict[self.model.correct_start_pointer] = answer_ends
+        feed_dict[self.model.correct_start_pointer] = answer_starts
         feed_dict[self.answer_starts] = answer_starts
         feed_dict[self.answer_ends] = answer_ends
         feed_dict[self.model.answer_partition] = answer_partition
