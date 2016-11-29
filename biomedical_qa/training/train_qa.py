@@ -200,6 +200,7 @@ with tf.Session(config=config) as sess:
     i = 0
     trainer.model.set_train(sess)
     epochs = 0
+    validate(0)
     while True:
         i += 1
         start_time = time.time()
