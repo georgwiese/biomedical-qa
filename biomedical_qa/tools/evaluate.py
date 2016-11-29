@@ -2,6 +2,7 @@ import json
 import os
 import pickle
 import sys
+import re
 import tensorflow as tf
 from nltk import RegexpTokenizer
 
@@ -24,6 +25,23 @@ tf.app.flags.DEFINE_boolean("bioasq_evaluation", False, "If true, runs BioASQ ev
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
 
 FLAGS = tf.app.flags.FLAGS
+
+def build_answer_string(tokens):
+
+    answer_string = ""
+    prev_space_after = False
+
+    for token in tokens:
+        is_word = re.match(r"^\w+$", token) is not None
+        space_before = is_word or token in ["("]
+        space_after = is_word or token in [")", ".", ",", ":"]
+        if space_before and prev_space_after:
+            answer_string += " "
+        answer_string += token
+        prev_space_after = space_after
+
+    return answer_string
+
 
 def bioasq_evaluation(sampler, sess, model):
     with open(FLAGS.eval_data) as f:
@@ -77,7 +95,7 @@ def bioasq_evaluation(sampler, sess, model):
 
             tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
             context_tokens = tokenizer.tokenize(contexts[i])
-            answers = [" ".join(context_tokens[top_starts[i, k] : top_ends[i, k] + 1])
+            answers = [build_answer_string(context_tokens[top_starts[i, k] : top_ends[i, k] + 1])
                        for k in range(5)]
 
             if FLAGS.verbose:
