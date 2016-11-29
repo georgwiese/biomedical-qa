@@ -1,7 +1,7 @@
 import json
 import os
 import pickle
-import math
+import sys
 import tensorflow as tf
 from nltk import RegexpTokenizer
 
@@ -33,6 +33,7 @@ def bioasq_evaluation(sampler, sess, model):
         "Questions must be augmented with original_answers to perform BioASQ evaluation."
     assert paragraphs[0]["qas"][0]["question_type"] is not None, \
         "Questions must be augmented with question_type to perform BioASQ evaluation."
+    assert FLAGS.beam_size >= 5, "Beamsize must be at least 5 to get 5 ranked answers."
 
     # Assuming one question per paragraph
     paragraphs_by_id = {p["qas"][0]["id"] : p for p in paragraphs}
@@ -41,6 +42,7 @@ def bioasq_evaluation(sampler, sess, model):
           (count, FLAGS.subsample if FLAGS.subsample > 0 else count))
 
     factoid_correct, factoid_total = 0, 0
+    factoid_reciprocal_rank_sum = 0
     list_correct, list_total = 0, 0
 
     sampler.reset()
@@ -56,47 +58,69 @@ def bioasq_evaluation(sampler, sess, model):
         question_types = [p["qas"][0]["question_type"] for p in paragraphs_batch]
         contexts = [p["context"] for p in paragraphs_batch]
 
-        starts, ends = sess.run([model.predicted_answer_starts,
-                                 model.predicted_answer_ends],
-                                 model.get_feed_dict(batch))
+        starts, ends, top_starts, top_ends = sess.run([model.predicted_answer_starts,
+                                                       model.predicted_answer_ends,
+                                                       model.top_starts,
+                                                       model.top_ends],
+                                                       model.get_feed_dict(batch))
 
         assert len(starts) == len(batch)
         assert len(ends) == len(batch)
+        assert len(top_starts) == len(batch)
+        assert len(top_ends) == len(batch)
+
+        for i in range(len(starts)):
+            assert starts[i] == top_starts[i, 0]
+            assert ends[i] == top_ends[i, 0]
 
         for i in range(len(batch)):
 
             tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
-            answer_tokens = tokenizer.tokenize(contexts[i])[starts[i] : ends[i] + 1]
-            answer = " ".join(answer_tokens)
+            context_tokens = tokenizer.tokenize(contexts[i])
+            answers = [" ".join(context_tokens[top_starts[i, k] : top_ends[i, k] + 1])
+                       for k in range(5)]
 
             if FLAGS.verbose:
                 print("-------------")
-                print("  Given: ", answer)
+                print("  Given: ", answers)
                 print("  Correct: ", correct_answers[i])
 
             if question_types[i] == "factoid":
-                # TODO: Implement MRR once ranked answers are implemented
                 factoid_total += 1
+                exact_math_found = False
+                rank = sys.maxsize
                 for correct_answer in correct_answers[i][0]:
-                    if correct_answer.lower() == answer.lower():
+                    # Compute exact match
+                    if not exact_math_found and \
+                            correct_answer.lower() == answers[0].lower():
                         if FLAGS.verbose:
                             print("  Correct!")
                         factoid_correct += 1
-                        break
+                        exact_math_found = True
+                    # Compute rank
+                    for k in range(5):
+                        if correct_answer.lower() == answers[k].lower():
+                            rank = min(rank, k + 1)
+
+                if FLAGS.verbose:
+                    print("  Rank: %d" % (rank if rank <= 5 else -1))
+                factoid_reciprocal_rank_sum += 1 / rank if rank <= 5 else 0
+
 
             if question_types[i] == "list":
                 # TODO: Evaluate F1 once multiple answers are implemented
                 list_total += 1
                 for answer_option in correct_answers[i]:
                     for correct_answer in answer_option:
-                        if correct_answer.lower() == answer.lower():
+                        if correct_answer.lower() == answers[0].lower():
                             if FLAGS.verbose:
                                 print("  Correct!")
-                            factoid_correct += 1
+                            list_correct += 1
                             break
 
-    print("Factoid Summary: %d / %d" % (factoid_correct, factoid_total))
-    print("List Summary: %d / %d" % (list_correct, list_total))
+    print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
+    print("Factoid MRR: %f" % (factoid_reciprocal_rank_sum / factoid_total))
+    print("List correct: %d / %d" % (list_correct, list_total))
 
 def main():
     devices = FLAGS.devices.split(",")

@@ -31,7 +31,31 @@ class BeamSearchDecoder(object):
         top_end_probs, top_ends = tf.nn.top_k(end_probs, 1)
 
         self._top_end_probs = tf.reshape(top_end_probs, [-1])
-        self._top_ends = tf.reshape(top_ends, [-1])
+        self._top_ends = tf.cast(tf.reshape(top_ends, [-1]), tf.int64)
+
+
+    def get_top_spans(self):
+        """Returns the top <beam size> starts with their most likely end."""
+
+        # Reshape
+        top_starts = tf.reshape(self._top_starts, [-1, self._beam_size])
+        top_ends = tf.reshape(self._top_ends, [-1, self._beam_size])
+
+        # Sort according to probability
+        total_probs = self._top_start_probs * self._top_end_probs
+        total_probs = tf.reshape(total_probs, [-1, self._beam_size])
+        _, col_indices = tf.nn.top_k(total_probs, self._beam_size, sorted=True)
+
+        rows = tf.shape(col_indices)[0]
+        row_index = tf.reshape(tf.range(rows), tf.pack([rows, 1]))
+        row_index_tiled = tf.tile(row_index, tf.pack([1, self._beam_size]))
+        indices = tf.pack([row_index_tiled, col_indices])
+        indices = tf.transpose(indices, [1, 2, 0])
+
+        sorted_top_starts = tf.gather_nd(top_starts, indices)
+        sorted_top_ends = tf.gather_nd(top_ends, indices)
+
+        return sorted_top_starts, sorted_top_ends
 
 
     def get_final_prediction(self):
@@ -40,7 +64,6 @@ class BeamSearchDecoder(object):
         total_probs = self._top_start_probs * self._top_end_probs
         total_probs = tf.reshape(total_probs, [-1, self._beam_size])
 
-
         segment_indices = tf.arg_max(total_probs, 1)
         offsets = tf.cast(tf.range(0, n_candidates, self._beam_size), tf.int64)
         indices = segment_indices + offsets
@@ -48,7 +71,7 @@ class BeamSearchDecoder(object):
         start_scores = self._start_scores
         end_scores = tf.gather(self._end_scores, indices)
         starts = tf.gather(self._top_starts, indices)
-        ends = tf.cast(tf.gather(self._top_ends, indices), tf.int64)
+        ends = tf.gather(self._top_ends, indices)
 
         return start_scores, end_scores, starts, ends
 
