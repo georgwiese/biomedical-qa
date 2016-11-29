@@ -92,6 +92,9 @@ def bioasq_evaluation(sampler, sess, model):
 
         for i in range(len(batch)):
 
+            current_correct_answers = correct_answers[i]
+            if isinstance(current_correct_answers[0], str):
+                current_correct_answers = [current_correct_answers]
 
             context_tokens = TOKENIZER.tokenize(contexts[i])
             answers = [context_tokens[top_starts[i, k] : top_ends[i, k] + 1]
@@ -100,13 +103,13 @@ def bioasq_evaluation(sampler, sess, model):
             if FLAGS.verbose:
                 print("-------------")
                 print("  Given: ", [" ".join(answer) for answer in answers])
-                print("  Correct: ", correct_answers[i])
+                print("  Correct: ", current_correct_answers)
 
             if question_types[i] == "factoid":
                 factoid_total += 1
                 exact_math_found = False
                 rank = sys.maxsize
-                for correct_answer in correct_answers[i][0]:
+                for correct_answer in current_correct_answers[0]:
                     # Compute exact match
                     if not exact_math_found and answer_equal(correct_answer, answers[0]):
                         if FLAGS.verbose:
@@ -126,7 +129,7 @@ def bioasq_evaluation(sampler, sess, model):
             if question_types[i] == "list":
                 # TODO: Evaluate F1 once multiple answers are implemented
                 list_total += 1
-                for answer_option in correct_answers[i]:
+                for answer_option in current_correct_answers:
                     for correct_answer in answer_option:
                         if answer_equal(correct_answer, answers[0]):
                             if FLAGS.verbose:
