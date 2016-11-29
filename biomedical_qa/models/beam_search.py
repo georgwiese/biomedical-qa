@@ -42,7 +42,7 @@ class BeamSearchDecoder(object):
 
 
         segment_indices = tf.arg_max(total_probs, 1)
-        offsets = tf.cast(tf.range(0, self._beam_size, n_candidates), tf.int64)
+        offsets = tf.cast(tf.range(0, n_candidates, self._beam_size), tf.int64)
         indices = segment_indices + offsets
 
         start_scores = self._start_scores

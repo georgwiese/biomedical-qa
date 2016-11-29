@@ -259,7 +259,6 @@ class QAPointerModel(ExtractionQAModel):
         partition = beam_search_decoder.expand_batch(answer_partition)
         question_state = tf.gather(question_state, partition)
         context_states = tf.gather(context_states, partition)
-        predicted_start_pointer = tf.gather(predicted_start_pointer, partition)
         offsets = tf.gather(offsets, partition)
 
         start_pointer = tf.cond(self._eval,
