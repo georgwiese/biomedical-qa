@@ -88,7 +88,7 @@ class ExtractionQATrainer(Trainer):
             self._update = tf.train.AdamOptimizer(self.learning_rate).\
                 apply_gradients(zip(self.grads, model.train_variables), global_step=self.global_step)
 
-        self._all_saver = tf.train.Saver(tf.all_variables(), max_to_keep=2)
+        self._all_saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
 
         with tf.name_scope("summaries"):
             tf.scalar_summary("loss", self._loss)

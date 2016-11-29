@@ -113,7 +113,7 @@ def main():
     config.gpu_options.allow_growth = True
 
     with tf.Session(config=config) as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         model.model_saver.restore(sess, FLAGS.model_weights)
         model.set_eval(sess)
         model.set_beam_size(sess, FLAGS.beam_size)

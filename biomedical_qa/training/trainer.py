@@ -11,7 +11,7 @@ class Trainer:
                 self._lr_decay = tf.placeholder(tf.float32, [], "lr_decay")
                 self._lr_decay_op = self.learning_rate.assign(self.learning_rate * self._lr_decay)
                 self._init()
-                self._all_saver = tf.train.Saver(tf.all_variables(), max_to_keep=2)
+                self._all_saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
 
     def _init(self):
         pass
