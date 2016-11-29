@@ -129,7 +129,7 @@ with tf.Session(config=config) as sess:
                                                 sess.graph)
 
     print("Initializing variables ...")
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     if FLAGS.transfer_model_path is not None:
         print("Loading transfer model from %s" % FLAGS.transfer_model_path)
         transfer_model.model_saver.restore(sess, FLAGS.transfer_model_path)
