@@ -6,6 +6,7 @@ from tensorflow.python.ops.rnn_cell import BasicRNNCell
 
 from biomedical_qa.models.attention import dot_co_attention
 from biomedical_qa.models.qa_model import ExtractionQAModel
+from biomedical_qa.models.beam_search import BeamSearchDecoder
 from biomedical_qa.models.rnn_cell import _highway_maxout_network
 from biomedical_qa import tfutil
 import numpy as np
@@ -42,7 +43,11 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            self.correct_start_pointer = tf.placeholder(tf.int64, shape=[None])
+            self._beam_size = tf.get_variable("beam_size", initializer=1, trainable=False)
+
+            # Fed during Training
+            self.correct_start_pointer = - tf.ones([self._batch_size], tf.int64) # Dummy value
+            self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
@@ -158,8 +163,6 @@ class QAPointerModel(ExtractionQAModel):
         current_start, current_end = None, None
         start_scores, end_scores = [], []
 
-        self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
-
         for i in range(4):
             if i > 0:
                 tf.get_variable_scope().reuse_variables()
@@ -210,8 +213,31 @@ class QAPointerModel(ExtractionQAModel):
 
     def _spn_answer_layer(self, question_state, context_states):
 
-        # Fed during training
-        self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
+        # Apply beam search only during evaluation
+        beam_size = tf.cond(self._eval,
+                            lambda: self._beam_size,
+                            lambda: tf.constant(1))
+
+        # During evaluation, we'll do the same for each answer
+        answer_partition = tf.cond(self._eval,
+                                   lambda: tf.cast(tf.range(tf.shape(question_state)[0]), tf.int64),
+                                   lambda: self.answer_partition)
+
+        start_scores, end_scores, starts, ends = self._spn_answer_layer_impl(
+            question_state, context_states, answer_partition, beam_size)
+
+        # Expand Evaluation results to match answer_partition
+        def expand_if_eval(tensor):
+            return tf.cond(self._eval,
+                           lambda: tf.gather(tensor, self.answer_partition),
+                           lambda: tensor)
+
+        return [expand_if_eval(x) for x in [start_scores, end_scores, starts, ends]]
+
+    def _spn_answer_layer_impl(self, question_state, context_states,
+                               answer_partition, beam_size):
+
+        beam_search_decoder = BeamSearchDecoder(beam_size, answer_partition)
 
         context_states = tf.nn.dropout(context_states, self.keep_prob)
         context_shape = tf.shape(context_states)
@@ -219,7 +245,6 @@ class QAPointerModel(ExtractionQAModel):
         context_states_flat = tf.reshape(context_states, [-1, input_size])
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) \
                   * (tf.reduce_max(self.context_length))
-        offsets = tf.gather(offsets, self.answer_partition)
 
         def hmn(input, states):
             return _highway_maxout_network(self._answer_layer_depth,
@@ -233,23 +258,26 @@ class QAPointerModel(ExtractionQAModel):
         with tf.variable_scope("start"):
             start_scores = hmn(question_state, context_states)
 
-        start_scores = tf.gather(start_scores, self.answer_partition)
+        predicted_start_pointer = beam_search_decoder.receive_start_scores(start_scores)
 
-        predicted_start_pointer = tf.argmax(start_scores, 1)
+        partition = beam_search_decoder.expand_batch(answer_partition)
+        question_state = tf.gather(question_state, partition)
+        context_states = tf.gather(context_states, partition)
+        offsets = tf.gather(offsets, partition)
+
         start_pointer = tf.cond(self._eval,
                                 lambda: predicted_start_pointer,
-                                lambda: self.correct_start_pointer)
+                                lambda: beam_search_decoder.expand_batch(
+                                    self.correct_start_pointer))
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
         with tf.variable_scope("end"):
-            question_state = tf.gather(question_state, self.answer_partition)
-            context_states = tf.gather(context_states, self.answer_partition)
             end_input = tf.concat(1, [u_s, question_state])
             end_scores = hmn(end_input, context_states)
 
-        end_pointer = tf.argmax(end_scores, 1)
+        beam_search_decoder.receive_end_scores(end_scores)
 
-        return start_scores, end_scores, predicted_start_pointer, end_pointer
+        return beam_search_decoder.get_final_prediction()
 
     def set_eval(self, sess):
         super().set_eval(sess)
@@ -258,6 +286,10 @@ class QAPointerModel(ExtractionQAModel):
     def set_train(self, sess):
         super().set_train(sess)
         sess.run(self._set_train)
+
+    def set_beam_size(self, sess, beam_size):
+        assign_op = self._beam_size.assign(beam_size)
+        sess.run([assign_op])
 
     @property
     def end_scores(self):

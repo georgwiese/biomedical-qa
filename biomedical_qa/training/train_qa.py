@@ -134,15 +134,13 @@ with tf.Session(config=config) as sess:
         print("Loading transfer model from %s" % FLAGS.transfer_model_path)
         transfer_model.model_saver.restore(sess, FLAGS.transfer_model_path)
 
+    latest_checkpoint = tf.train.latest_checkpoint(train_dir)
     if FLAGS.init_model_path:
         print("Loading from path " + FLAGS.init_model_path)
         trainer.model.model_saver.restore(sess, FLAGS.init_model_path)
-    elif os.path.exists(train_dir) and any("ckpt" in x for x in os.listdir(train_dir)):
-        newest = max(map(lambda x: os.path.join(train_dir, x),
-                         filter(lambda x: not x.endswith(".meta") and "ckpt" in x, os.listdir(train_dir))),
-                     key=os.path.getctime)
-        print("Loading from checkpoint " + newest)
-        trainer.all_saver.restore(sess, newest)
+    elif latest_checkpoint is not None:
+        print("Loading from checkpoint " + latest_checkpoint)
+        trainer.all_saver.restore(sess, latest_checkpoint)
     else:
         if not os.path.exists(train_dir):
             os.makedirs(train_dir)
