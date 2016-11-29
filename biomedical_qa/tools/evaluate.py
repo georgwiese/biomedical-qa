@@ -17,6 +17,8 @@ tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 tf.app.flags.DEFINE_integer("batch_size", 32, "Number of examples in each batch.")
 tf.app.flags.DEFINE_integer("subsample", -1, "Number of samples to do the evaluation on.")
 
+tf.app.flags.DEFINE_integer("beam_size", 5, "Beam size used for decoding.")
+
 tf.app.flags.DEFINE_boolean("squad_evaluation", False, "If true, measures F1 and exact match acc on answer spans.")
 tf.app.flags.DEFINE_boolean("bioasq_evaluation", False, "If true, runs BioASQ evaluation measures.")
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
@@ -56,7 +58,7 @@ def bioasq_evaluation(sampler, sess, model):
 
         starts, ends = sess.run([model.predicted_answer_starts,
                                  model.predicted_answer_ends],
-                                model.get_feed_dict(batch))
+                                 model.get_feed_dict(batch))
 
         assert len(starts) == len(batch)
         assert len(ends) == len(batch)
@@ -114,6 +116,7 @@ def main():
         sess.run(tf.global_variables_initializer())
         model.model_saver.restore(sess, FLAGS.model_weights)
         model.set_eval(sess)
+        model.set_beam_size(sess, FLAGS.beam_size)
 
         print("Initializing Sampler & Trainer...")
         data_dir = os.path.dirname(FLAGS.eval_data)
