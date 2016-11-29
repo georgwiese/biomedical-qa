@@ -40,7 +40,7 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            self._beam_size = tf.get_variable("beam_size", initializer=5, trainable=False)
+            self._beam_size = tf.get_variable("beam_size", initializer=1, trainable=False)
 
             # Fed during Training
             self.correct_start_pointer = - tf.ones([self._batch_size], tf.int64) # Dummy value
