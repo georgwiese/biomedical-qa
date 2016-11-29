@@ -26,21 +26,20 @@ tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given
 
 FLAGS = tf.app.flags.FLAGS
 
-def build_answer_string(tokens):
+TOKENIZER = RegexpTokenizer(r'\w+|[^\w\s]')
 
-    answer_string = ""
-    prev_space_after = False
+def answer_equal(answer_string, predicted_tokens):
 
-    for token in tokens:
-        is_word = re.match(r"^\w+$", token) is not None
-        space_before = is_word or token in ["("]
-        space_after = is_word or token in [")", ".", ",", ":"]
-        if space_before and prev_space_after:
-            answer_string += " "
-        answer_string += token
-        prev_space_after = space_after
+    answer_tokens = TOKENIZER.tokenize(answer_string.lower())
 
-    return answer_string
+    if len(answer_tokens) != len(predicted_tokens):
+        return False
+
+    for answer_token, predicted_token in zip(answer_tokens, predicted_tokens):
+        if answer_token != predicted_token.lower():
+            return False
+
+    return True
 
 
 def bioasq_evaluation(sampler, sess, model):
@@ -93,14 +92,14 @@ def bioasq_evaluation(sampler, sess, model):
 
         for i in range(len(batch)):
 
-            tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
-            context_tokens = tokenizer.tokenize(contexts[i])
-            answers = [build_answer_string(context_tokens[top_starts[i, k] : top_ends[i, k] + 1])
+
+            context_tokens = TOKENIZER.tokenize(contexts[i])
+            answers = [context_tokens[top_starts[i, k] : top_ends[i, k] + 1]
                        for k in range(5)]
 
             if FLAGS.verbose:
                 print("-------------")
-                print("  Given: ", answers)
+                print("  Given: ", [" ".join(answer) for answer in answers])
                 print("  Correct: ", correct_answers[i])
 
             if question_types[i] == "factoid":
@@ -109,15 +108,14 @@ def bioasq_evaluation(sampler, sess, model):
                 rank = sys.maxsize
                 for correct_answer in correct_answers[i][0]:
                     # Compute exact match
-                    if not exact_math_found and \
-                            correct_answer.lower() == answers[0].lower():
+                    if not exact_math_found and answer_equal(correct_answer, answers[0]):
                         if FLAGS.verbose:
                             print("  Correct!")
                         factoid_correct += 1
                         exact_math_found = True
                     # Compute rank
                     for k in range(5):
-                        if correct_answer.lower() == answers[k].lower():
+                        if answer_equal(correct_answer, answers[k]):
                             rank = min(rank, k + 1)
 
                 if FLAGS.verbose:
@@ -130,7 +128,7 @@ def bioasq_evaluation(sampler, sess, model):
                 list_total += 1
                 for answer_option in correct_answers[i]:
                     for correct_answer in answer_option:
-                        if correct_answer.lower() == answers[0].lower():
+                        if answer_equal(correct_answer, answers[0]):
                             if FLAGS.verbose:
                                 print("  Correct!")
                             list_correct += 1

@@ -132,6 +132,7 @@ class QAPointerModel(ExtractionQAModel):
 
         matched_output = dot_co_attention(encoded_ctxt, self.context_length,
                                           encoded_question, self.question_length)
+        # TODO: Append feature if token is in question
         matched_output = tf.nn.bidirectional_dynamic_rnn(cell_constructor(size),
                                                          cell_constructor(size),
                                                          matched_output, sequence_length=self.context_length,
