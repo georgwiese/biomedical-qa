@@ -4,10 +4,13 @@ import json
 import logging
 import re
 import numpy as np
-
+from nltk import RegexpTokenizer
 
 TRAIN_FRACTION = 0.8
+# Max is ~4300
+CONTEXT_TOKEN_LIMIT = 1500
 
+TOKENIZER = RegexpTokenizer(r'\w+|[^\w\s]')
 
 np.random.seed(1234)
 
@@ -41,9 +44,12 @@ def convert_to_squad(bioasq_file_path, out_dir):
                      if p["qas"][0]["question_type"] == "factoid"])
   num_list = len([p for p in paragraphs
                   if p["qas"][0]["question_type"] == "list"])
+  max_context_len = max([len(TOKENIZER.tokenize(p["context"]))
+                         for p in paragraphs])
 
+  print("Max Context Length: %d tokens" % max_context_len)
   print("Used Factoid questions: %d / %d" % (num_factoid, num_factoid_original))
-  print("Used Lisr questions: %d / %d" % (num_list, num_list_original))
+  print("Used List questions: %d / %d" % (num_list, num_list_original))
 
 
 def split_paragraphs(paragraphs):
@@ -125,8 +131,26 @@ def build_paragraph(question):
 
 def get_context(question):
 
+  num_tokens = 0
+  snippets_set = set()
   snippets = [snippet["text"] for snippet in question["snippets"]]
-  return " ".join(snippets)
+  filtered_tickets = []
+
+  for snippet in snippets:
+
+    # Deduplicate Snippets
+    if snippet in snippets_set:
+      continue
+    snippets_set.add(snippet)
+
+    # Keep token limit
+    num_tokens += len(TOKENIZER.tokenize(snippet))
+    if num_tokens > CONTEXT_TOKEN_LIMIT:
+      break
+
+    filtered_tickets.append(snippet)
+
+  return " ".join(filtered_tickets)
 
 
 def get_answers(question, context):
