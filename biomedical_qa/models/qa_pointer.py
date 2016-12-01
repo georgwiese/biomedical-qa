@@ -1,7 +1,10 @@
-from tensorflow.python.ops.rnn_cell import *
-from tensorflow.python.ops.rnn import *
+import tensorflow as tf
 
-from biomedical_qa.models.attention import *
+from tensorflow.python.ops.rnn import bidirectional_dynamic_rnn
+from tensorflow.contrib.rnn import LSTMBlockCell, GRUBlockCell
+from tensorflow.python.ops.rnn_cell import BasicRNNCell
+
+from biomedical_qa.models.attention import dot_co_attention
 from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.models.beam_search import BeamSearchDecoder
 from biomedical_qa.models.rnn_cell import _highway_maxout_network
@@ -29,11 +32,11 @@ class QAPointerModel(ExtractionQAModel):
     def _init(self):
         ExtractionQAModel._init(self)
         if self._composition == "GRU":
-            cell_constructor = lambda size: GRUCell(size)
+            cell_constructor = lambda size: GRUBlockCell(size)
         elif self._composition == "RNN":
             cell_constructor = lambda size: BasicRNNCell(size)
         else:
-            cell_constructor = lambda size: BasicLSTMCell(size, state_is_tuple=True)
+            cell_constructor = lambda size: LSTMBlockCell(size)
 
         with tf.device(self._device0):
             self._eval = tf.get_variable("is_eval", initializer=False, trainable=False)
@@ -86,7 +89,8 @@ class QAPointerModel(ExtractionQAModel):
                 with tf.variable_scope("pointer_layer"):
                     if self._answer_layer_type == "dpn":
                         self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
-                            self._dpn_answer_layer(self.question_representation, self.matched_output)
+                            self._dpn_answer_layer(self.question_representation, self.matched_output,
+                                                   cell_constructor)
                     elif self._answer_layer_type == "spn":
                         self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
                             self._spn_answer_layer(self.question_representation, self.matched_output)
@@ -142,12 +146,12 @@ class QAPointerModel(ExtractionQAModel):
 
         return matched_output
 
-    def _dpn_answer_layer(self, question_state, context_states):
+    def _dpn_answer_layer(self, question_state, context_states, cell_constructor):
         context_states = tf.nn.dropout(context_states, self.keep_prob)
         max_length = tf.cast(tf.reduce_max(self.context_length), tf.int32)
 
         # dynamic pointing decoder
-        controller_cell = GRUCell(question_state.get_shape()[1].value)
+        controller_cell = cell_constructor(question_state.get_shape()[1].value)
         input_size = context_states.get_shape()[-1].value
         context_states_flat = tf.reshape(context_states, [-1, context_states.get_shape()[-1].value])
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length))
