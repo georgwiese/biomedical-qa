@@ -2,7 +2,7 @@ import json
 import os
 import pickle
 import sys
-import re
+import numpy as np
 import tensorflow as tf
 from nltk import RegexpTokenizer
 
@@ -60,7 +60,7 @@ def bioasq_evaluation(sampler, sess, model):
 
     factoid_correct, factoid_total = 0, 0
     factoid_reciprocal_rank_sum = 0
-    list_correct, list_total = 0, 0
+    list_f1_sum, list_total = 0, 0
 
     sampler.reset()
     epoch = sampler.epoch
@@ -127,19 +127,36 @@ def bioasq_evaluation(sampler, sess, model):
 
 
             if question_types[i] == "list":
-                # TODO: Evaluate F1 once multiple answers are implemented
                 list_total += 1
+                answer_correct = np.zeros([len(answers)], dtype=np.bool)
+
                 for answer_option in current_correct_answers:
                     for correct_answer in answer_option:
-                        if answer_equal(correct_answer, answers[0]):
-                            if FLAGS.verbose:
-                                print("  Correct!")
-                            list_correct += 1
-                            break
+                        for j, answer in enumerate(answers):
+
+                            # Count answer if it hasn't yet been counted as correct.
+                            if not answer_correct[j] and \
+                                answer_equal(correct_answer, answers[0]):
+                                answer_correct[j] = True
+                                # Only count one synonym.
+                                break
+
+                tp = np.count_nonzero(answer_correct)
+                precision = tp / len(answers)
+                recall = tp / len(current_correct_answers)
+                if precision + recall > 0:
+                    f1 = 2 * precision * recall / (precision + recall)
+                else:
+                    f1 = 0
+
+                if FLAGS.verbose:
+                    print("F1: %f" % f1)
+                list_f1_sum += f1
 
     print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
     print("Factoid MRR: %f" % (factoid_reciprocal_rank_sum / factoid_total))
-    print("List correct: %d / %d" % (list_correct, list_total))
+    print("List mean F1: %d (%d Questions)" % (list_f1_sum / list_total,
+                                               list_total))
 
 def main():
     devices = FLAGS.devices.split(",")
