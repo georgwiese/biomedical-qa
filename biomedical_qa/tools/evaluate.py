@@ -155,7 +155,7 @@ def bioasq_evaluation(sampler, sess, model):
 
     print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
     print("Factoid MRR: %f" % (factoid_reciprocal_rank_sum / factoid_total))
-    print("List mean F1: %d (%d Questions)" % (list_f1_sum / list_total,
+    print("List mean F1: %f (%d Questions)" % (list_f1_sum / list_total,
                                                list_total))
 
 def main():
