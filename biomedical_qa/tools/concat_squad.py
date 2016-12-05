@@ -22,9 +22,20 @@ def concat_jsons(file1, file2, out_file, repeat1, repeat2):
 
     ds_merged = merge(ds1, ds2, repeat1, repeat2)
 
+    print("Length ds1: %d" % count_questions(ds1["data"]))
+    print("Length ds2: %d" % count_questions(ds2["data"]))
+    print("Length merged: %d" % count_questions(ds_merged["data"]))
+
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     with open(out_file, "w") as f:
         json.dump(ds_merged, f)
+
+
+def count_questions(data):
+    return len([q
+                for d in data
+                for p in d["paragraphs"]
+                for q in p["qas"]])
 
 
 def merge(ds1, ds2, repeat1, repeat2):
