@@ -58,7 +58,6 @@ tf.app.flags.DEFINE_integer("max_epochs", 40, "Maximum number of epochs.")
 tf.app.flags.DEFINE_boolean("transfer_qa", False, "Tranfer-model (if given) is a QAModel")
 tf.app.flags.DEFINE_string("transfer_model_config", None, "Path to transfer model config.")
 tf.app.flags.DEFINE_string("transfer_model_path", None, "Path to transfer model model.")
-tf.app.flags.DEFINE_float("transfer_model_lr", 0.0, "Learning rate for transfer model.")
 tf.app.flags.DEFINE_integer("transfer_layer_size", None, "Learning rate for transfer model.")
 
 
@@ -79,7 +78,6 @@ with tf.Session(config=config) as sess:
         if FLAGS.max_vocab < 0:
             FLAGS.max_vocab = len(vocab)
         transfer_model = CharWordEmbedder(FLAGS.size, vocab, devices[0], name=FLAGS.name)
-        FLAGS.transfer_model_lr = FLAGS.learning_rate
     else:
         print("Creating transfer model from config %s" % FLAGS.transfer_model_config)
         with open(FLAGS.transfer_model_config, 'rb') as f:
@@ -117,7 +115,7 @@ with tf.Session(config=config) as sess:
                            answer_layer_poolsize=FLAGS.answer_layer_poolsize,
                            answer_layer_type=FLAGS.answer_layer_type)
 
-    trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0], FLAGS.transfer_model_lr)
+    trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0])
 
     print("Created %s!" % type(model).__name__)
 
