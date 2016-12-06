@@ -7,8 +7,8 @@ import numpy as np
 from nltk import RegexpTokenizer
 
 TRAIN_FRACTION = 0.8
-# Max is ~4300
-CONTEXT_TOKEN_LIMIT = 1500
+# Max is ~4300, SQuAD max is ~700
+CONTEXT_TOKEN_LIMIT = 700
 
 TOKENIZER = RegexpTokenizer(r'\w+|[^\w\s]')
 
@@ -20,7 +20,7 @@ def convert_to_squad(bioasq_file_path, out_dir):
   with open(bioasq_file_path) as json_file:
     data = json.load(json_file)
 
-  paragraphs = build_paragraphs(data)
+  paragraphs, contexts_truncated = build_paragraphs(data)
   train_paragraphs, dev_paragraphs = split_paragraphs(paragraphs)
 
   os.makedirs(out_dir, exist_ok=True)
@@ -48,6 +48,7 @@ def convert_to_squad(bioasq_file_path, out_dir):
                          for p in paragraphs])
 
   print("Max Context Length: %d tokens" % max_context_len)
+  print("Contexts truncated: %d" % contexts_truncated)
   print("Used Factoid questions: %d / %d" % (num_factoid, num_factoid_original))
   print("Used List questions: %d / %d" % (num_list, num_list_original))
 
@@ -86,7 +87,11 @@ def build_paragraphs(data):
 
   paragraphs = [build_paragraph(question)
                 for question in filter_questions(data["questions"])]
-  return [p for p in paragraphs if p is not None]
+  paragraphs = [p for p in paragraphs if p is not None]
+
+  paragraphs, context_truncated = zip(*paragraphs)
+
+  return paragraphs, sum(context_truncated)
 
 
 def filter_questions(questions):
@@ -109,13 +114,13 @@ def filter_questions(questions):
 
 def build_paragraph(question):
 
-  context = get_context(question)
+  context, context_truncated = get_context(question)
   answers = get_answers(question, context)
 
   if answers is None:
     return None
 
-  return {
+  paragraph = {
     "context": context.lower(),
     "qas": [
       {
@@ -128,6 +133,8 @@ def build_paragraph(question):
     ]
   }
 
+  return paragraph, context_truncated
+
 
 def get_context(question):
 
@@ -135,6 +142,8 @@ def get_context(question):
   snippets_set = set()
   snippets = [snippet["text"] for snippet in question["snippets"]]
   filtered_tickets = []
+
+  did_truncate = False
 
   for snippet in snippets:
 
@@ -146,11 +155,12 @@ def get_context(question):
     # Keep token limit
     num_tokens += len(TOKENIZER.tokenize(snippet))
     if num_tokens > CONTEXT_TOKEN_LIMIT:
+      did_truncate = True
       break
 
     filtered_tickets.append(snippet)
 
-  return " ".join(filtered_tickets)
+  return " ".join(filtered_tickets), did_truncate
 
 
 def get_answers(question, context):
