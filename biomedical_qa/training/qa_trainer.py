@@ -9,9 +9,8 @@ from biomedical_qa.training.trainer import Trainer
 
 class ExtractionQATrainer(Trainer):
 
-    def __init__(self, learning_rate, model, device, transfer_model_lr=0.0, use_mean_f1=False):
-        self._initial_transfer_model_lr = transfer_model_lr
-        self._use_mean_f1 = use_mean_f1
+    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
+        self._train_variable_prefixes = train_variable_prefixes
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
         Trainer.__init__(self, learning_rate, model, device)
 
@@ -21,10 +20,6 @@ class ExtractionQATrainer(Trainer):
 
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
-        if self._initial_transfer_model_lr > 0.0:
-            self.transfer_model_lr = tf.get_variable("embedder_lr", initializer=float(self._initial_transfer_model_lr), trainable=False)
-            self._lr_decay_op = tf.group(self._lr_decay_op,
-                                         self.transfer_model_lr.assign(self.transfer_model_lr * self._lr_decay))
 
         start_scores = model.start_scores
         end_scores = model.end_scores
@@ -65,28 +60,21 @@ class ExtractionQATrainer(Trainer):
                                             tf.equal(end_pointer, self.answer_ends)), tf.int32),
                                             self.model.answer_partition)
 
-        if self._initial_transfer_model_lr > 0.0:
-            grads = tf.gradients(self.loss, model.train_variables + model.embedder.train_variables,
-                                       colocate_gradients_with_ops=True)
-
-            embedder_grads = grads[len(model.train_variables):]
-            grads = grads[:len(model.train_variables)]
-            self.grads = grads
-            #, _ = tf.clip_by_global_norm(grads, 5.0)
-            self.embedder_grads = embedder_grads
-            #, _ = tf.clip_by_global_norm(embedder_grads, 5.0)
-
-            self._update = tf.group(tf.train.AdamOptimizer(self.learning_rate).\
-                apply_gradients(zip(self.grads, model.train_variables), global_step=self.global_step),
-                                    tf.train.AdamOptimizer(self.transfer_model_lr).\
-                apply_gradients(zip(self.embedder_grads, model.embedder.train_variables)))
+        if len(self._train_variable_prefixes):
+            train_variables = [v for v in model.train_variables
+                               if any([v.name.startswith(prefix)
+                                       for prefix in self._train_variable_prefixes])]
         else:
-            grads = tf.gradients(self.loss, model.train_variables, colocate_gradients_with_ops=True)
-            self.grads = grads
-            #, _ = tf.clip_by_global_norm(grads, 5.0)
+            train_variables = model.train_variables
 
-            self._update = tf.train.AdamOptimizer(self.learning_rate).\
-                apply_gradients(zip(self.grads, model.train_variables), global_step=self.global_step)
+        print("Training variables: %d / %d" % (len(train_variables),
+                                               len(model.train_variables)))
+        grads = tf.gradients(self.loss, train_variables, colocate_gradients_with_ops=True)
+        self.grads = grads
+        #, _ = tf.clip_by_global_norm(grads, 5.0)
+
+        self._update = tf.train.AdamOptimizer(self.learning_rate).\
+            apply_gradients(zip(self.grads, train_variables), global_step=self.global_step)
 
         self._all_saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
 
