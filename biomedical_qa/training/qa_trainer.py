@@ -9,8 +9,8 @@ from biomedical_qa.training.trainer import Trainer
 
 class ExtractionQATrainer(Trainer):
 
-    def __init__(self, learning_rate, model, device, train_variables_prefixes=[]):
-        self._train_variables_prefixes = train_variables_prefixes
+    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
+        self._train_variable_prefixes = train_variable_prefixes
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
         Trainer.__init__(self, learning_rate, model, device)
 
@@ -60,15 +60,15 @@ class ExtractionQATrainer(Trainer):
                                             tf.equal(end_pointer, self.answer_ends)), tf.int32),
                                             self.model.answer_partition)
 
-        print([v.name for v in model.train_variables])
-
-        if len(self._train_variables_prefixes):
+        if len(self._train_variable_prefixes):
             train_variables = [v for v in model.train_variables
                                if any([v.name.startswith(prefix)
-                                       for prefix in self._train_variables_prefixes])]
+                                       for prefix in self._train_variable_prefixes])]
         else:
             train_variables = model.train_variables
 
+        print("Training variables: %d / %d" % (len(train_variables),
+                                               len(model.train_variables)))
         grads = tf.gradients(self.loss, train_variables, colocate_gradients_with_ops=True)
         self.grads = grads
         #, _ = tf.clip_by_global_norm(grads, 5.0)

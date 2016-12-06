@@ -53,6 +53,7 @@ tf.app.flags.DEFINE_integer("max_vocab", -1, "Maximum vocab size if no embedder 
 tf.app.flags.DEFINE_integer("max_instances", None, "Maximum number of training instances.")
 tf.app.flags.DEFINE_integer("subsample_validation", None, "Maximum number of validation instances.")
 tf.app.flags.DEFINE_integer("max_epochs", 40, "Maximum number of epochs.")
+tf.app.flags.DEFINE_string("train_variable_prefixes", "", "Comma-seperated list of variable name prefixes that should be trained.")
 
 #embedder
 tf.app.flags.DEFINE_boolean("transfer_qa", False, "Tranfer-model (if given) is a QAModel")
@@ -72,6 +73,8 @@ config.gpu_options.allow_growth = True
 
 with tf.Session(config=config) as sess:
     devices = FLAGS.devices.split(",")
+    train_variable_prefixes = FLAGS.train_variable_prefixes.split(",") \
+                              if FLAGS.train_variable_prefixes else []
 
     if FLAGS.transfer_model_config is None:
         vocab, _, _ = load_vocab(os.path.join(FLAGS.data, "document.vocab"))
@@ -115,7 +118,8 @@ with tf.Session(config=config) as sess:
                            answer_layer_poolsize=FLAGS.answer_layer_poolsize,
                            answer_layer_type=FLAGS.answer_layer_type)
 
-    trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0])
+    trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
+                                  train_variable_prefixes=train_variable_prefixes)
 
     print("Created %s!" % type(model).__name__)
 
