@@ -226,10 +226,10 @@ def find_all_substring_positions(string, substring):
   if not len(substring):
     return []
 
-  search_strings = ["\\W%s\\W" % re.escape(substring),
-                    "^%s\\W" % re.escape(substring),
-                    "\\W%s$" % re.escape(substring)]
-  return [m.start() + 1
+  search_strings = ["\\W(%s)\\W" % re.escape(substring),
+                    "^(%s)\\W" % re.escape(substring),
+                    "\\W(%s)$" % re.escape(substring)]
+  return [m.span(1)[0]
           for search_string in search_strings
           for m in re.finditer(search_string, string)]
 
