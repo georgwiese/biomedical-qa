@@ -8,7 +8,7 @@ def text_heatmap(tokens, scores, token_highlight=None):
 
     Arguments:
         - tokens: List of token strings
-        - scores: numpy array of scores, one for each token
+        - scores: 1D numpy array of scores, one for each token
         - token_highlight: numpy array of booleans that
             specifies for each token whether it should be
             highlighted.
@@ -26,7 +26,7 @@ def text_heatmap(tokens, scores, token_highlight=None):
 
         axis = axes[row] if num_rows > 1 else axes
 
-        axis.pcolor(scores[:, row * tokens_per_row:(row + 1) * tokens_per_row],
+        axis.pcolor(scores[row * tokens_per_row:(row + 1) * tokens_per_row].reshape((1, -1)),
                     cmap="YlOrBr", vmin=s_min, vmax=s_max)
 
         axis.get_yaxis().set_visible(False)
