@@ -172,9 +172,15 @@ def main():
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
 
+    model_weights = FLAGS.model_weights
+    if model_weights is None:
+        train_dir = os.path.dirname(FLAGS.model_config)
+        model_weights = tf.train.latest_checkpoint(train_dir)
+        print("Using weights: %s" % model_weights)
+
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
-        model.model_saver.restore(sess, FLAGS.model_weights)
+        model.model_saver.restore(sess, model_weights)
         model.set_eval(sess)
         model.set_beam_size(sess, FLAGS.beam_size)
 
