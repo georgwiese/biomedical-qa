@@ -85,7 +85,7 @@ if __name__ == "__main__":
     sampler = SQuADSampler(None, None, FLAGS.batch_size, model.embedder.vocab,
                            shuffle=False, dataset_json=squad_json)
 
-    contexts = {p["qas"][0]["id"] : p["context"]
+    contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
     answers = predict_answers(sess, model, sampler)
     bioasq_json = insert_answers(bioasq_json, answers, contexts, sampler)
