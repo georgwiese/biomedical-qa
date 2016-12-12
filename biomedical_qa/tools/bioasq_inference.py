@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 
 import tensorflow as tf
 
@@ -77,7 +78,15 @@ def extract_answer(context, answer_span, sampler):
     token_start, token_end = answer_span
     _, char_offsets = sampler.trfm(context)
 
+    if token_start == len(char_offsets):
+        logging.warning("Null word selected! Using first token instead.")
+        token_start = 0
+
     char_start = char_offsets[token_start]
+
+    if token_end == len(char_offsets):
+        logging.warning("Null word selected! Using last token instead.")
+        token_end = len(char_offsets) - 1
 
     if token_end == len(char_offsets) - 1:
         # Span continues until the very end
