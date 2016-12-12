@@ -89,6 +89,7 @@ class BioAsqSquadBuilder(object):
 
         paragraph = {
             "context": context.lower(),
+            "context_original_capitalization": context,
             "qas": [
                 {
                     "id": question["id"],

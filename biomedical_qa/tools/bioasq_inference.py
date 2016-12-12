@@ -66,36 +66,12 @@ def insert_answers(bioasq_json, answers, contexts, sampler):
     for question in bioasq_json["questions"]:
         q_id = question["id"]
         if q_id in answers:
-            question["exact_answer"] = [[extract_answer(contexts[q_id], answer_span, sampler)]
+            question["exact_answer"] = [[util.extract_answer(contexts[q_id], answer_span)]
                                         for answer_span in answers[q_id]]
             question["ideal_answer"] = ""
             questions.append(question)
 
     return {"questions": questions}
-
-
-def extract_answer(context, answer_span, sampler):
-
-    token_start, token_end = answer_span
-    _, char_offsets = sampler.trfm(context)
-
-    if token_start == len(char_offsets):
-        logging.warning("Null word selected! Using first token instead.")
-        token_start = 0
-
-    char_start = char_offsets[token_start]
-
-    if token_end == len(char_offsets):
-        logging.warning("Null word selected! Using last token instead.")
-        token_end = len(char_offsets) - 1
-
-    if token_end == len(char_offsets) - 1:
-        # Span continues until the very end
-        return context[char_start:]
-    else:
-        # token_end is inclusive
-        char_end = char_offsets[token_end + 1]
-        return context[char_start:char_end].strip()
 
 
 if __name__ == "__main__":
@@ -110,7 +86,7 @@ if __name__ == "__main__":
     sampler = SQuADSampler(None, None, FLAGS.batch_size, model.embedder.vocab,
                            shuffle=False, dataset_json=squad_json)
 
-    contexts = {p["qas"][0]["id"] : p["context"]
+    contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
     answers = predict_answers(sess, model, sampler)
     bioasq_json = insert_answers(bioasq_json, answers, contexts, sampler)
