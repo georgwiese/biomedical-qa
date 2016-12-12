@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from nltk import RegexpTokenizer
 
+from biomedical_qa.tools import util
 from biomedical_qa.models import model_from_config
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
@@ -161,43 +162,23 @@ def bioasq_evaluation(sampler, sess, model):
 def main():
     devices = FLAGS.devices.split(",")
 
-    print("Loading Model...")
-    with open(FLAGS.model_config, 'rb') as f:
-        model_config = pickle.load(f)
-    model = model_from_config(model_config, devices)
+    model, sess = util.initialize_model(FLAGS.model_config, FLAGS.model_weights,
+                                        devices, FLAGS.beam_size)
 
-    vocab = model.embedder.vocab
+    print("Initializing Sampler & Trainer...")
+    data_dir = os.path.dirname(FLAGS.eval_data)
+    data_filename = os.path.basename(FLAGS.eval_data)
+    instances = FLAGS.subsample if FLAGS.subsample > 0 else None
+    sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
+                           model.embedder.vocab, instances_per_epoch=instances)
+    trainer = ExtractionQATrainer(0, model, devices[0])
 
-    print("Restoring Weights...")
-    config = tf.ConfigProto(allow_soft_placement=True)
-    config.gpu_options.allow_growth = True
+    if FLAGS.squad_evaluation:
+        print("Running SQuAD Evaluation...")
+        trainer.eval(sess, sampler, verbose=True)
 
-    model_weights = FLAGS.model_weights
-    if model_weights is None:
-        train_dir = os.path.dirname(FLAGS.model_config)
-        model_weights = tf.train.latest_checkpoint(train_dir)
-        print("Using weights: %s" % model_weights)
-
-    with tf.Session(config=config) as sess:
-        sess.run(tf.global_variables_initializer())
-        model.model_saver.restore(sess, model_weights)
-        model.set_eval(sess)
-        model.set_beam_size(sess, FLAGS.beam_size)
-
-        print("Initializing Sampler & Trainer...")
-        data_dir = os.path.dirname(FLAGS.eval_data)
-        data_filename = os.path.basename(FLAGS.eval_data)
-        instances = FLAGS.subsample if FLAGS.subsample > 0 else None
-        sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
-                               vocab, instances_per_epoch=instances)
-        trainer = ExtractionQATrainer(0, model, devices[0])
-
-        if FLAGS.squad_evaluation:
-            print("Running SQuAD Evaluation...")
-            trainer.eval(sess, sampler, verbose=True)
-
-        if FLAGS.bioasq_evaluation:
-            print("Running BioASQ Evaluation...")
-            bioasq_evaluation(sampler, sess, model)
+    if FLAGS.bioasq_evaluation:
+        print("Running BioASQ Evaluation...")
+        bioasq_evaluation(sampler, sess, model)
 
 main()
