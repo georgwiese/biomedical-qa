@@ -7,7 +7,6 @@ import tensorflow as tf
 from nltk import RegexpTokenizer
 
 from biomedical_qa.tools import util
-from biomedical_qa.models import model_from_config
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 

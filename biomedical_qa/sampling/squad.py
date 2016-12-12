@@ -8,7 +8,7 @@ from biomedical_qa.models import QASetting
 
 class SQuADSampler:
     def __init__(self, dir, filenames, batch_size, vocab,
-                 instances_per_epoch=None, shuffle=True):
+                 instances_per_epoch=None, shuffle=True, dataset_json=None):
         self.__batch_size = batch_size
         self.unk_id = vocab["<UNK>"]
         self.start_id = vocab["<S>"]
@@ -18,9 +18,10 @@ class SQuADSampler:
         self.num_batches = 0
         self.epoch = 0
         self._rng = random.Random(28739)
-        # load json
-        with open(os.path.join(dir, filenames[0])) as dataset_file:
-            dataset_json = json.load(dataset_file)
+        if dataset_json is None:
+            # load json
+            with open(os.path.join(dir, filenames[0])) as dataset_file:
+                dataset_json = json.load(dataset_file)
         dataset = dataset_json['data']
         self._qas = []
 
@@ -44,7 +45,8 @@ class SQuADSampler:
                 for qa in paragraph["qas"]:
                     answers = []
                     answer_spans = []
-                    for a in qa["answers"]:
+                    answers_json = qa["answers"] if "answers" in qa else []
+                    for a in answers_json:
                         answer = trfm(a["text"])[0]
                         if a["answer_start"] in offsets:
                             start = offsets.index(a["answer_start"])

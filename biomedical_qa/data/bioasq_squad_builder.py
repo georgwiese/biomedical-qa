@@ -8,15 +8,15 @@ class BioAsqSquadBuilder(object):
     """Converts BioASQ JSON objects to (enriched) SQuAD JSON objects."""
 
 
-    def __init__(self, bioasq_json, context_token_limit=-1):
+    def __init__(self, bioasq_json, context_token_limit=-1, include_answers=True):
 
         self._bioasq_json = bioasq_json
         self._tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
         self._context_token_limit = context_token_limit
+        self._include_answers = include_answers
         self._paragraphs = None
         self._stats = {
             "contexts_truncated": 0,
-            "questions_skipped": 0,
             "max_context_length": 0,
         }
 
@@ -62,6 +62,8 @@ class BioAsqSquadBuilder(object):
 
         self._paragraphs = paragraphs
 
+        return self
+
 
     def filter_questions(self, questions):
 
@@ -84,10 +86,6 @@ class BioAsqSquadBuilder(object):
     def build_paragraph(self, question):
 
         context = self.get_context(question)
-        answers = self.get_answers(question, context)
-
-        if answers is None:
-            return None
 
         paragraph = {
             "context": context.lower(),
@@ -95,12 +93,20 @@ class BioAsqSquadBuilder(object):
                 {
                     "id": question["id"],
                     "question": question["body"].lower(),
-                    "answers": answers,
-                    "original_answers": question["exact_answer"],
                     "question_type": question["type"]
                 }
             ]
         }
+
+        if self._include_answers:
+            answers = self.get_answers(question, context)
+
+            if answers is None:
+                return None
+
+            paragraph["qas"][0]["answers"] = answers
+            paragraph["qas"][0]["original_answers"] = question["exact_answer"]
+
 
         return paragraph
 
@@ -124,7 +130,6 @@ class BioAsqSquadBuilder(object):
             if self._context_token_limit > 0 and \
                         num_tokens + snippet_length > self._context_token_limit:
                 self._stats["contexts_truncated"] += 1
-                print(num_tokens)
                 break
             num_tokens += snippet_length
 
@@ -171,7 +176,6 @@ class BioAsqSquadBuilder(object):
             # Skip question
             logging.warning("Skipping question %s. No matching answer." %
                             question["id"])
-            self._stats["questions_skipped"] += 1
             return None
 
         return answer_objects
