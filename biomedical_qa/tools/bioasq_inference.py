@@ -68,6 +68,7 @@ def insert_answers(bioasq_json, answers, contexts, sampler):
         if q_id in answers:
             question["exact_answer"] = [[extract_answer(contexts[q_id], answer_span, sampler)]
                                         for answer_span in answers[q_id]]
+            question["ideal_answer"] = ""
             questions.append(question)
 
     return {"questions": questions}
