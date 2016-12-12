@@ -33,15 +33,49 @@ def load_dataset(path):
 
 
 def predict_answers(sess, model, sampler):
-    """Returns a <question id> -> <answers array> map."""
+    """Returns a <question id> -> [(<start token>, <end token>), ...] map."""
 
-    pass
+    sampler.reset()
+    start_epoch = sampler.epoch
+    answers = {}
+
+    while sampler.epoch == start_epoch:
+        batch = sampler.get_batch()
+
+        top_starts, top_ends = sess.run([model.top_starts,
+                                         model.top_ends],
+                                        model.get_feed_dict(batch))
+
+        for i in range(len(batch)):
+            question = batch[i]
 
 
-def insert_answers(bioasq_json, answers):
-    """Inserts answers into bioasq_json from a <question id> -> <answers array>."""
+            answers[question.id] = [(top_starts[i, k], top_ends[i, k])
+                                    for k in range(5)]
 
-    return bioasq_json
+    return answers
+
+
+def insert_answers(bioasq_json, answers, contexts):
+    """Inserts answers into bioasq_json from a
+    <question id> -> [(<start token>, <end token>), ...]."""
+
+    questions = []
+
+    for question in bioasq_json["questions"]:
+        q_id = question["id"]
+        if q_id in answers:
+            question["exact_answer"] = [[extract_answer(contexts[q_id], answer_span)]
+                                        for answer_span in answers[q_id]]
+            questions.append(question)
+
+    return {"questions": questions}
+
+
+def extract_answer(context, answer_span):
+
+    # TODO
+    return str(answer_span)
 
 
 if __name__ == "__main__":
@@ -56,8 +90,10 @@ if __name__ == "__main__":
     sampler = SQuADSampler(None, None, FLAGS.batch_size, model.embedder.vocab,
                            shuffle=False, dataset_json=squad_json)
 
+    contexts = {p["qas"][0]["id"] : p["context"]
+                for p in squad_json["data"][0]["paragraphs"]}
     answers = predict_answers(sess, model, sampler)
-    bioasq_json = insert_answers(bioasq_json, answers)
+    bioasq_json = insert_answers(bioasq_json, answers, contexts)
 
     os.makedirs(os.path.dirname(FLAGS.out_file), exist_ok=True)
     with open(FLAGS.out_file, "w") as f:
