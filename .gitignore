@@ -1,4 +1,4 @@
-data
+./data
 model_checkpoints
 biomedical-qa.iml
 .idea
