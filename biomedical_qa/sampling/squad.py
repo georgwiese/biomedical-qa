@@ -25,29 +25,17 @@ class SQuADSampler:
         dataset = dataset_json['data']
         self._qas = []
 
-        tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
-
-        def trfm(s):
-            idxs = []
-            offsets = []
-            offset = 0
-            for t in tokenizer.tokenize(s):
-                offset = s.index(t, offset)
-                offsets.append(offset)
-                i = vocab.get(t, self.unk_id)
-                idxs.append(i)
-                offset += len(t)
-            return idxs, offsets
+        self.tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
 
         for article in dataset:
             for paragraph in article["paragraphs"]:
-                context, offsets = trfm(paragraph["context"])
+                context, offsets = self.trfm(paragraph["context"])
                 for qa in paragraph["qas"]:
                     answers = []
                     answer_spans = []
                     answers_json = qa["answers"] if "answers" in qa else []
                     for a in answers_json:
-                        answer = trfm(a["text"])[0]
+                        answer = self.trfm(a["text"])[0]
                         if a["answer_start"] in offsets:
                             start = offsets.index(a["answer_start"])
                             if (start, start + len(answer)) in answer_spans:
@@ -55,7 +43,7 @@ class SQuADSampler:
                             answer_spans.append((start, start + len(answer)))
                             answers.append(answer)
                     q_type = qa["question_type"] if "question_type" in qa else None
-                    self._qas.append(QASetting(trfm(qa["question"])[0], answers,
+                    self._qas.append(QASetting(self.trfm(qa["question"])[0], answers,
                                                context, answer_spans,
                                                id=qa["id"],
                                                q_type=q_type))
@@ -65,6 +53,18 @@ class SQuADSampler:
         if instances_per_epoch is not None:
             self._qas = self._qas[:instances_per_epoch]
         self._idx = 0
+
+    def trfm(self, s):
+        idxs = []
+        offsets = []
+        offset = 0
+        for t in self.tokenizer.tokenize(s):
+            offset = s.index(t, offset)
+            offsets.append(offset)
+            i = self.vocab.get(t, self.unk_id)
+            idxs.append(i)
+            offset += len(t)
+        return idxs, offsets
 
     def get_batch(self):
         qa_settings = [self._qas[i+self._idx] for i in range(min(self.__batch_size, len(self._qas) - self._idx))]

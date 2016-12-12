@@ -56,7 +56,7 @@ def predict_answers(sess, model, sampler):
     return answers
 
 
-def insert_answers(bioasq_json, answers, contexts):
+def insert_answers(bioasq_json, answers, contexts, sampler):
     """Inserts answers into bioasq_json from a
     <question id> -> [(<start token>, <end token>), ...]."""
 
@@ -65,17 +65,27 @@ def insert_answers(bioasq_json, answers, contexts):
     for question in bioasq_json["questions"]:
         q_id = question["id"]
         if q_id in answers:
-            question["exact_answer"] = [[extract_answer(contexts[q_id], answer_span)]
+            question["exact_answer"] = [[extract_answer(contexts[q_id], answer_span, sampler)]
                                         for answer_span in answers[q_id]]
             questions.append(question)
 
     return {"questions": questions}
 
 
-def extract_answer(context, answer_span):
+def extract_answer(context, answer_span, sampler):
 
-    # TODO
-    return str(answer_span)
+    token_start, token_end = answer_span
+    _, char_offsets = sampler.trfm(context)
+
+    char_start = char_offsets[token_start]
+
+    if token_end == len(char_offsets) - 1:
+        # Span continues until the very end
+        return context[char_start:]
+    else:
+        # token_end is inclusive
+        char_end = char_offsets[token_end + 1]
+        return context[char_start:char_end].strip()
 
 
 if __name__ == "__main__":
@@ -93,7 +103,7 @@ if __name__ == "__main__":
     contexts = {p["qas"][0]["id"] : p["context"]
                 for p in squad_json["data"][0]["paragraphs"]}
     answers = predict_answers(sess, model, sampler)
-    bioasq_json = insert_answers(bioasq_json, answers, contexts)
+    bioasq_json = insert_answers(bioasq_json, answers, contexts, sampler)
 
     os.makedirs(os.path.dirname(FLAGS.out_file), exist_ok=True)
     with open(FLAGS.out_file, "w") as f:
