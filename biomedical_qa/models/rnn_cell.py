@@ -2,6 +2,9 @@ from tensorflow.python.ops.rnn_cell import RNNCell, GRUCell
 import tensorflow as tf
 import numpy as np
 
+from biomedical_qa import tfutil
+
+
 class ParamAssociativeMemory(RNNCell):
 
     def __init__(self, num_slots, size, input_size):
@@ -408,5 +411,6 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
                                                 scope="out")
     # [B, L]
     out = tf.reduce_max(out, [2])
+    out = out + tfutil.mask_for_lengths(lengths, tf.shape(states)[1])
 
     return out
