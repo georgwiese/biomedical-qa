@@ -83,7 +83,7 @@ def bioasq_evaluation(sampler, sess, model):
 
             answers = [util.extract_answer(contexts[i],
                                            (top_starts[i, k],
-                                            top_ends[i, k] + 1))
+                                            top_ends[i, k]))
                        for k in range(5)]
 
             if FLAGS.verbose:
