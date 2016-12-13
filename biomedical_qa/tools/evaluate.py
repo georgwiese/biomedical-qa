@@ -88,6 +88,7 @@ def bioasq_evaluation(sampler, sess, model):
 
             if FLAGS.verbose:
                 print("-------------")
+                print("  ID:", batch[i].id)
                 print("  Given: ", answers)
                 print("  Correct: ", current_correct_answers)
 
