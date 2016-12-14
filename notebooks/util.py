@@ -3,6 +3,12 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
+def remove_negative_outliers(scores, threshold=-500):
+    
+    filtered_scores = scores[scores >= threshold]
+    scores[scores < threshold] = filtered_scores.min()
+    return scores
+
 def text_heatmap(tokens, scores, token_highlight=None):
     """Displays a given text as a heatmap.
 
@@ -16,6 +22,8 @@ def text_heatmap(tokens, scores, token_highlight=None):
 
     if token_highlight is None:
         token_highlight = np.zeros(len(tokens), dtype=np.bool)
+        
+    scores = remove_negative_outliers(scores)
 
     tokens_per_row = 10
     num_rows = math.ceil(len(tokens) / tokens_per_row)
