@@ -26,21 +26,6 @@ tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given
 
 FLAGS = tf.app.flags.FLAGS
 
-TOKENIZER = RegexpTokenizer(r'\w+|[^\w\s]')
-
-def answer_equal(answer_string, predicted_tokens):
-
-    answer_tokens = TOKENIZER.tokenize(answer_string.lower())
-
-    if len(answer_tokens) != len(predicted_tokens):
-        return False
-
-    for answer_token, predicted_token in zip(answer_tokens, predicted_tokens):
-        if answer_token != predicted_token.lower():
-            return False
-
-    return True
-
 
 def bioasq_evaluation(sampler, sess, model):
     with open(FLAGS.eval_data) as f:
@@ -96,13 +81,15 @@ def bioasq_evaluation(sampler, sess, model):
             if isinstance(current_correct_answers[0], str):
                 current_correct_answers = [current_correct_answers]
 
-            context_tokens = TOKENIZER.tokenize(contexts[i])
-            answers = [context_tokens[top_starts[i, k] : top_ends[i, k] + 1]
+            answers = [util.extract_answer(contexts[i],
+                                           (top_starts[i, k],
+                                            top_ends[i, k]))
                        for k in range(5)]
 
             if FLAGS.verbose:
                 print("-------------")
-                print("  Given: ", [" ".join(answer) for answer in answers])
+                print("  ID:", batch[i].id)
+                print("  Given: ", answers)
                 print("  Correct: ", current_correct_answers)
 
             if question_types[i] == "factoid":
@@ -111,14 +98,15 @@ def bioasq_evaluation(sampler, sess, model):
                 rank = sys.maxsize
                 for correct_answer in current_correct_answers[0]:
                     # Compute exact match
-                    if not exact_math_found and answer_equal(correct_answer, answers[0]):
+                    if not exact_math_found and \
+                            answers[0].lower() == correct_answer.lower():
                         if FLAGS.verbose:
                             print("  Correct!")
                         factoid_correct += 1
                         exact_math_found = True
                     # Compute rank
                     for k in range(5):
-                        if answer_equal(correct_answer, answers[k]):
+                        if answers[k].lower() == correct_answer.lower():
                             rank = min(rank, k + 1)
 
                 if FLAGS.verbose:
@@ -132,12 +120,12 @@ def bioasq_evaluation(sampler, sess, model):
 
                 for answer_option in current_correct_answers:
                     for correct_answer in answer_option:
-                        for j, answer in enumerate(answers):
+                        for k in range(len(answers)):
 
                             # Count answer if it hasn't yet been counted as correct.
-                            if not answer_correct[j] and \
-                                answer_equal(correct_answer, answers[0]):
-                                answer_correct[j] = True
+                            if not answer_correct[k] and \
+                                    answers[k].lower() == correct_answer.lower():
+                                answer_correct[k] = True
                                 # Only count one synonym.
                                 break
 
