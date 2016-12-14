@@ -278,7 +278,7 @@ class QAPointerModel(ExtractionQAModel):
 
         beam_search_decoder.receive_end_scores(end_scores)
 
-        self.top_starts, self.top_ends = beam_search_decoder.get_top_spans()
+        self.top_starts, self.top_ends, self.top_probs = beam_search_decoder.get_top_spans()
 
         return beam_search_decoder.get_final_prediction()
 
