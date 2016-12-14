@@ -39,6 +39,7 @@ class SQuADSampler:
                 dataset_json = json.load(dataset_file)
         dataset = dataset_json['data']
         self._qas = []
+        self.char_offsets = {}
 
         for article in dataset:
             for paragraph in article["paragraphs"]:
@@ -60,6 +61,7 @@ class SQuADSampler:
                                                context, answer_spans,
                                                id=qa["id"],
                                                q_type=q_type))
+                    self.char_offsets[qa["id"]] = offsets
 
         if shuffle:
             self._rng.shuffle(self._qas)
