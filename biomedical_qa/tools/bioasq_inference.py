@@ -34,7 +34,7 @@ def load_dataset(path):
 
 
 def predict_answers(sess, model, sampler):
-    """Returns a <question id> -> [(<start token>, <end token>), ...] map."""
+    """Returns a <question id> -> {"starts": ..., "ends": ...} map."""
 
     sampler.reset()
     start_epoch = sampler.epoch
@@ -51,23 +51,27 @@ def predict_answers(sess, model, sampler):
             question = batch[i]
 
 
-            answers[question.id] = [(top_starts[i, k], top_ends[i, k])
-                                    for k in range(5)]
+            answers[question.id] = {
+                "starts": top_starts[i],
+                "ends": top_ends[i],
+            }
 
     return answers
 
 
 def insert_answers(bioasq_json, answers, contexts, sampler):
     """Inserts answers into bioasq_json from a
-    <question id> -> [(<start token>, <end token>), ...]."""
+    <question id> -> {"starts": ..., "ends": ...} map."""
 
     questions = []
 
     for question in bioasq_json["questions"]:
         q_id = question["id"]
         if q_id in answers:
-            question["exact_answer"] = [[util.extract_answer(contexts[q_id], answer_span)]
-                                        for answer_span in answers[q_id]]
+            answer_strings = util.extract_answers(contexts[q_id],
+                                                  answers[q_id]["starts"],
+                                                  answers[q_id]["ends"])
+            question["exact_answer"] = [[s] for s in answer_strings[:5]]
             question["ideal_answer"] = ""
             questions.append(question)
 
