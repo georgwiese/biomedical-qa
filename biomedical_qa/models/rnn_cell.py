@@ -411,6 +411,6 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
                                                 scope="out")
     # [B, L]
     out = tf.reduce_max(out, [2])
-    out = out + tfutil.mask_for_lengths(lengths, tf.shape(states)[1])
+    out = out + tfutil.mask_for_lengths(lengths, max_length=tf.shape(states)[1])
 
     return out
