@@ -55,3 +55,21 @@ def extract_answer(context, answer_span):
         # token_end is inclusive
         char_end = char_offsets[token_end + 1]
         return context[char_start:char_end].strip()
+
+
+def extract_answers(context, starts, ends):
+
+    answers_set = set()
+    answers = []
+
+    assert len(starts) == len(ends)
+
+    for i in range(len(starts)):
+        answer = extract_answer(context, (starts[i], ends[i]))
+
+        # Deduplicate
+        if answer not in answers_set:
+            answers_set.add(answer)
+            answers.append(answer)
+
+    return answers

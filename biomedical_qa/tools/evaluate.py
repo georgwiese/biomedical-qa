@@ -81,10 +81,7 @@ def bioasq_evaluation(sampler, sess, model):
             if isinstance(current_correct_answers[0], str):
                 current_correct_answers = [current_correct_answers]
 
-            answers = [util.extract_answer(contexts[i],
-                                           (top_starts[i, k],
-                                            top_ends[i, k]))
-                       for k in range(5)]
+            answers = util.extract_answers(contexts[i], top_starts[i], top_ends[i])[:5]
 
             if FLAGS.verbose:
                 print("-------------")
@@ -105,7 +102,7 @@ def bioasq_evaluation(sampler, sess, model):
                         factoid_correct += 1
                         exact_math_found = True
                     # Compute rank
-                    for k in range(5):
+                    for k in range(min(len(answers), 5)):
                         if answers[k].lower() == correct_answer.lower():
                             rank = min(rank, k + 1)
 

@@ -11,6 +11,8 @@ from biomedical_qa.models.rnn_cell import _highway_maxout_network
 from biomedical_qa import tfutil
 import numpy as np
 
+MAX_ANSWER_LENGTH_HEURISTIC = 10
+
 class QAPointerModel(ExtractionQAModel):
 
     def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None,
@@ -247,17 +249,19 @@ class QAPointerModel(ExtractionQAModel):
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) \
                   * (tf.reduce_max(self.context_length))
 
-        def hmn(input, states):
+        def hmn(input, states, context_lengths):
+            # Use context_length - 1 so that the null word is never selected.
             return _highway_maxout_network(self._answer_layer_depth,
                                            self._answer_layer_poolsize,
                                            input,
                                            states,
-                                           self.context_length,
+                                           context_lengths - 1,
                                            context_shape[1],
                                            self.size)
 
         with tf.variable_scope("start"):
-            start_scores = hmn(question_state, context_states)
+            start_scores = hmn(question_state, context_states,
+                               self.context_length)
 
         predicted_start_pointer = beam_search_decoder.receive_start_scores(start_scores)
 
@@ -265,6 +269,7 @@ class QAPointerModel(ExtractionQAModel):
         question_state = tf.gather(question_state, partition)
         context_states = tf.gather(context_states, partition)
         offsets = tf.gather(offsets, partition)
+        context_lengths = tf.gather(self.context_length, partition)
 
         start_pointer = tf.cond(self._eval,
                                 lambda: predicted_start_pointer,
@@ -274,7 +279,17 @@ class QAPointerModel(ExtractionQAModel):
 
         with tf.variable_scope("end"):
             end_input = tf.concat(1, [u_s, question_state])
-            end_scores = hmn(end_input, context_states)
+            end_scores = hmn(end_input, context_states, context_lengths)
+
+        # Mask end scores for evaluation
+        masked_end_scores = end_scores + tfutil.mask_for_lengths(
+            start_pointer, mask_right=False, max_length=self.embedder.max_length + 1)
+        masked_end_scores = masked_end_scores + tfutil.mask_for_lengths(
+            start_pointer + MAX_ANSWER_LENGTH_HEURISTIC + 1,
+            max_length=self.embedder.max_length + 1)
+        end_scores = tf.cond(self._eval,
+                             lambda: masked_end_scores,
+                             lambda: end_scores)
 
         beam_search_decoder.receive_end_scores(end_scores)
 
