@@ -60,7 +60,8 @@ class SQuADSampler:
                     self._qas.append(QASetting(trfm(qa["question"], vocab, self.unk_id)[0], answers,
                                                context, answer_spans,
                                                id=qa["id"],
-                                               q_type=q_type))
+                                               q_type=q_type,
+                                               paragraph_json=paragraph))
                     self.char_offsets[qa["id"]] = offsets
 
         if shuffle:

@@ -16,7 +16,9 @@ class QASetting:
                  answer_candidates=None,
                  answer_candidate_spans=None,
                  id=None,
-                 q_type=None):
+                 q_type=None,
+                 paragraph_json=None,
+                 question_json=None):
         """
         :param question: list of indices
         :param answers:  list of list of indices
@@ -31,6 +33,8 @@ class QASetting:
         self.answer_candidate_spans = answer_candidate_spans
         self.id = id
         self.q_type = q_type
+        self.paragraph_json = paragraph_json
+        self.question_json = question_json
 
     def translate(self, vocab, unk_id):
         self.question = [vocab.get(w, unk_id) for w in self.question]

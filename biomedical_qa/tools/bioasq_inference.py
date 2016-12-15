@@ -5,8 +5,8 @@ import logging
 import tensorflow as tf
 
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
+from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.sampling.squad import SQuADSampler
-from biomedical_qa.tools import util
 
 tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
 tf.app.flags.DEFINE_string('out_file', None, 'Path to the output file.')
@@ -33,44 +33,16 @@ def load_dataset(path):
     return bioasq_json, squad_json
 
 
-def predict_answers(sess, model, sampler):
-    """Returns a <question id> -> {"starts": ..., "ends": ...} map."""
-
-    sampler.reset()
-    start_epoch = sampler.epoch
-    answers = {}
-
-    while sampler.epoch == start_epoch:
-        batch = sampler.get_batch()
-
-        top_starts, top_ends = sess.run([model.top_starts,
-                                         model.top_ends],
-                                        model.get_feed_dict(batch))
-
-        for i in range(len(batch)):
-            question = batch[i]
-
-
-            answers[question.id] = {
-                "starts": top_starts[i],
-                "ends": top_ends[i],
-            }
-
-    return answers
-
-
-def insert_answers(bioasq_json, answers, contexts, sampler):
+def insert_answers(bioasq_json, answers):
     """Inserts answers into bioasq_json from a
-    <question id> -> {"starts": ..., "ends": ...} map."""
+    <question id> -> InferenceResult map."""
 
     questions = []
 
     for question in bioasq_json["questions"]:
         q_id = question["id"]
         if q_id in answers:
-            answer_strings = util.extract_answers(contexts[q_id],
-                                                  answers[q_id]["starts"],
-                                                  answers[q_id]["ends"])
+            answer_strings = answers[q_id].answer_strings
             question["exact_answer"] = [[s] for s in answer_strings[:5]]
             question["ideal_answer"] = ""
             questions.append(question)
@@ -82,18 +54,19 @@ if __name__ == "__main__":
 
     devices = FLAGS.devices.split(",")
 
-    model, sess = util.initialize_model(FLAGS.model_config, FLAGS.model_weights,
-                                        devices, FLAGS.beam_size)
+    inferrer = Inferrer(FLAGS.model_config, devices, FLAGS.beam_size,
+                        FLAGS.model_weights)
 
     # Build sampler from dataset JSON
     bioasq_json, squad_json = load_dataset(FLAGS.bioasq_file)
-    sampler = SQuADSampler(None, None, FLAGS.batch_size, model.embedder.vocab,
+    sampler = SQuADSampler(None, None, FLAGS.batch_size,
+                           inferrer.model.embedder.vocab,
                            shuffle=False, dataset_json=squad_json)
 
     contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
-    answers = predict_answers(sess, model, sampler)
-    bioasq_json = insert_answers(bioasq_json, answers, contexts, sampler)
+    answers = inferrer.get_predictions(sampler)
+    bioasq_json = insert_answers(bioasq_json, answers)
 
     os.makedirs(os.path.dirname(FLAGS.out_file), exist_ok=True)
     with open(FLAGS.out_file, "w") as f:

@@ -1,12 +1,10 @@
 import json
 import os
-import pickle
 import sys
 import numpy as np
 import tensorflow as tf
-from nltk import RegexpTokenizer
 
-from biomedical_qa.tools import util
+from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 
@@ -27,7 +25,7 @@ tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given
 FLAGS = tf.app.flags.FLAGS
 
 
-def bioasq_evaluation(sampler, sess, model):
+def bioasq_evaluation(sampler, inferrer):
     with open(FLAGS.eval_data) as f:
         paragraphs = json.load(f)["data"][0]["paragraphs"]
 
@@ -38,105 +36,86 @@ def bioasq_evaluation(sampler, sess, model):
     assert FLAGS.beam_size >= 5, "Beamsize must be at least 5 to get 5 ranked answers."
 
     # Assuming one question per paragraph
-    paragraphs_by_id = {p["qas"][0]["id"] : p for p in paragraphs}
     count = len(paragraphs)
     print("  (Questions: %d, using %d)" %
           (count, FLAGS.subsample if FLAGS.subsample > 0 else count))
+    if FLAGS.subsample > 0:
+        paragraphs = paragraphs[:FLAGS.subsample]
 
     factoid_correct, factoid_total = 0, 0
     factoid_reciprocal_rank_sum = 0
     list_f1_sum, list_total = 0, 0
 
-    sampler.reset()
-    epoch = sampler.epoch
+    print("  Doing predictions...")
+    predictions = inferrer.get_predictions(sampler)
 
-    while sampler.epoch == epoch:
+    for paragraph in paragraphs:
 
-        batch = sampler.get_batch()
-        paragraphs_batch = [paragraphs_by_id[q.id] for q in batch]
-        assert len(batch) == len(paragraphs_batch)
+        question = paragraph["qas"][0]
+        prediction = predictions[question["id"]]
 
-        correct_answers = [p["qas"][0]["original_answers"] for p in paragraphs_batch]
-        question_types = [p["qas"][0]["question_type"] for p in paragraphs_batch]
-        contexts = [p["context"] for p in paragraphs_batch]
+        correct_answers = question["original_answers"]
+        question_type = question["question_type"]
 
-        starts, ends, top_starts, top_ends = sess.run([model.predicted_answer_starts,
-                                                       model.predicted_answer_ends,
-                                                       model.top_starts,
-                                                       model.top_ends],
-                                                       model.get_feed_dict(batch))
+        if isinstance(correct_answers[0], str):
+            correct_answers = [correct_answers]
 
-        assert len(starts) == len(batch)
-        assert len(ends) == len(batch)
-        assert len(top_starts) == len(batch)
-        assert len(top_ends) == len(batch)
+        answers = prediction.answer_strings[:5]
 
-        for i in range(len(starts)):
-            assert starts[i] == top_starts[i, 0]
-            assert ends[i] == top_ends[i, 0]
+        if FLAGS.verbose:
+            print("-------------")
+            print("  ID:", question["id"])
+            print("  Given: ", answers)
+            print("  Correct: ", correct_answers)
 
-        for i in range(len(batch)):
-
-            current_correct_answers = correct_answers[i]
-            if isinstance(current_correct_answers[0], str):
-                current_correct_answers = [current_correct_answers]
-
-            answers = util.extract_answers(contexts[i], top_starts[i], top_ends[i])[:5]
+        if question_type == "factoid":
+            factoid_total += 1
+            exact_math_found = False
+            rank = sys.maxsize
+            for correct_answer in correct_answers[0]:
+                # Compute exact match
+                if not exact_math_found and \
+                        answers[0].lower() == correct_answer.lower():
+                    if FLAGS.verbose:
+                        print("  Correct!")
+                    factoid_correct += 1
+                    exact_math_found = True
+                # Compute rank
+                for k in range(min(len(answers), 5)):
+                    if answers[k].lower() == correct_answer.lower():
+                        rank = min(rank, k + 1)
 
             if FLAGS.verbose:
-                print("-------------")
-                print("  ID:", batch[i].id)
-                print("  Given: ", answers)
-                print("  Correct: ", current_correct_answers)
-
-            if question_types[i] == "factoid":
-                factoid_total += 1
-                exact_math_found = False
-                rank = sys.maxsize
-                for correct_answer in current_correct_answers[0]:
-                    # Compute exact match
-                    if not exact_math_found and \
-                            answers[0].lower() == correct_answer.lower():
-                        if FLAGS.verbose:
-                            print("  Correct!")
-                        factoid_correct += 1
-                        exact_math_found = True
-                    # Compute rank
-                    for k in range(min(len(answers), 5)):
-                        if answers[k].lower() == correct_answer.lower():
-                            rank = min(rank, k + 1)
-
-                if FLAGS.verbose:
-                    print("  Rank: %d" % (rank if rank <= 5 else -1))
-                factoid_reciprocal_rank_sum += 1 / rank if rank <= 5 else 0
+                print("  Rank: %d" % (rank if rank <= 5 else -1))
+            factoid_reciprocal_rank_sum += 1 / rank if rank <= 5 else 0
 
 
-            if question_types[i] == "list":
-                list_total += 1
-                answer_correct = np.zeros([len(answers)], dtype=np.bool)
+        if question_type == "list":
+            list_total += 1
+            answer_correct = np.zeros([len(answers)], dtype=np.bool)
 
-                for answer_option in current_correct_answers:
-                    for correct_answer in answer_option:
-                        for k in range(len(answers)):
+            for answer_option in correct_answers:
+                for correct_answer in answer_option:
+                    for k in range(len(answers)):
 
-                            # Count answer if it hasn't yet been counted as correct.
-                            if not answer_correct[k] and \
-                                    answers[k].lower() == correct_answer.lower():
-                                answer_correct[k] = True
-                                # Only count one synonym.
-                                break
+                        # Count answer if it hasn't yet been counted as correct.
+                        if not answer_correct[k] and \
+                                answers[k].lower() == correct_answer.lower():
+                            answer_correct[k] = True
+                            # Only count one synonym.
+                            break
 
-                tp = np.count_nonzero(answer_correct)
-                precision = tp / len(answers)
-                recall = tp / len(current_correct_answers)
-                if precision + recall > 0:
-                    f1 = 2 * precision * recall / (precision + recall)
-                else:
-                    f1 = 0
+            tp = np.count_nonzero(answer_correct)
+            precision = tp / len(answers)
+            recall = tp / len(correct_answers)
+            if precision + recall > 0:
+                f1 = 2 * precision * recall / (precision + recall)
+            else:
+                f1 = 0
 
-                if FLAGS.verbose:
-                    print("F1: %f" % f1)
-                list_f1_sum += f1
+            if FLAGS.verbose:
+                print("F1: %f" % f1)
+            list_f1_sum += f1
 
     print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
     print("Factoid MRR: %f" % (factoid_reciprocal_rank_sum / factoid_total))
@@ -146,23 +125,24 @@ def bioasq_evaluation(sampler, sess, model):
 def main():
     devices = FLAGS.devices.split(",")
 
-    model, sess = util.initialize_model(FLAGS.model_config, FLAGS.model_weights,
-                                        devices, FLAGS.beam_size)
+    inferrer = Inferrer(FLAGS.model_config, devices, FLAGS.beam_size,
+                        FLAGS.model_weights)
 
     print("Initializing Sampler & Trainer...")
     data_dir = os.path.dirname(FLAGS.eval_data)
     data_filename = os.path.basename(FLAGS.eval_data)
     instances = FLAGS.subsample if FLAGS.subsample > 0 else None
     sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
-                           model.embedder.vocab, instances_per_epoch=instances)
-    trainer = ExtractionQATrainer(0, model, devices[0])
+                           inferrer.model.embedder.vocab,
+                           instances_per_epoch=instances, shuffle=False)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
-        trainer.eval(sess, sampler, verbose=True)
+        trainer = ExtractionQATrainer(0, inferrer.model, devices[0])
+        trainer.eval(inferrer.sess, sampler, verbose=True)
 
     if FLAGS.bioasq_evaluation:
         print("Running BioASQ Evaluation...")
-        bioasq_evaluation(sampler, sess, model)
+        bioasq_evaluation(sampler, inferrer)
 
 main()
