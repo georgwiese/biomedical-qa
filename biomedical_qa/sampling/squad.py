@@ -61,7 +61,8 @@ class SQuADSampler:
                                                context, answer_spans,
                                                id=qa["id"],
                                                q_type=q_type,
-                                               paragraph_json=paragraph))
+                                               paragraph_json=paragraph,
+                                               question_json=qa))
                     self.char_offsets[qa["id"]] = offsets
 
         if shuffle:
