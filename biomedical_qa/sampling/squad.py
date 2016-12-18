@@ -1,6 +1,6 @@
 import json
 import os
-from nltk.tokenize import WordPunctTokenizer, RegexpTokenizer
+from nltk.tokenize import RegexpTokenizer
 import random
 
 from biomedical_qa.models import QASetting

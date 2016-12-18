@@ -11,12 +11,13 @@ from biomedical_qa.models import model_from_config
 
 class InferenceResult(object):
 
-    def __init__(self, starts, ends, probs, answer_strings):
+    def __init__(self, starts, ends, probs, answer_strings, answer_probs):
 
         self.starts = starts
         self.ends = ends
         self.probs = probs
         self.answer_strings = answer_strings
+        self.answer_probs = answer_probs
 
 
 class Inferrer(object):
@@ -66,18 +67,19 @@ class Inferrer(object):
             for i, question in enumerate(batch):
                 context = question.paragraph_json["context_original_capitalization"]
 
-
+                answers, answer_probs = self.extract_answers(context, starts[i],
+                                                             ends[i], probs[i])
                 predictions[question.id] = InferenceResult(
-                    starts[i], ends[i], probs[i],
-                    self.extract_answers(context, starts[i], ends[i]))
+                    starts[i], ends[i], probs[i], answers, answer_probs)
 
         return predictions
 
 
-    def extract_answers(self, context, starts, ends):
+    def extract_answers(self, context, starts, ends, probs):
 
-        answers_set = set()
+        answer2index = {}
         answers = []
+        filtered_probs = []
 
         assert len(starts) == len(ends)
 
@@ -85,11 +87,20 @@ class Inferrer(object):
             answer = self.extract_answer(context, (starts[i], ends[i]))
 
             # Deduplicate
-            if answer not in answers_set:
-                answers_set.add(answer)
+            if answer.lower() not in answer2index:
+                answer2index.update({answer.lower() : len(answers)})
                 answers.append(answer)
+                filtered_probs.append(probs[i])
+            else:
+                # Duplicate mentions should add their probs
+                index = answer2index[answer.lower()]
+                filtered_probs[index] += probs[i]
 
-        return answers
+        # Sort by new probability
+        answers_probs = list(zip(answers, filtered_probs))
+        answers_probs.sort(key=lambda x : x[1])
+
+        return zip(*answers_probs)
 
 
     def extract_answer(self, context, answer_span):
