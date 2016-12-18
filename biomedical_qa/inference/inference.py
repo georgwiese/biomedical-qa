@@ -11,13 +11,17 @@ from biomedical_qa.models import model_from_config
 
 class InferenceResult(object):
 
-    def __init__(self, starts, ends, probs, answer_strings, answer_probs):
+    def __init__(self, starts, ends, probs, start_scores, end_scores,
+                 answer_strings, answer_probs, question):
 
         self.starts = starts
         self.ends = ends
         self.probs = probs
+        self.start_scores = start_scores
+        self.end_scores = end_scores
         self.answer_strings = answer_strings
         self.answer_probs = answer_probs
+        self.question = question
 
 
 class Inferrer(object):
@@ -58,10 +62,12 @@ class Inferrer(object):
 
             batch = sampler.get_batch()
 
-            starts, ends, probs = self.sess.run(
+            starts, ends, probs, start_scores, end_scores = self.sess.run(
                     [self.model.top_starts,
                      self.model.top_ends,
-                     self.model.top_probs],
+                     self.model.top_probs,
+                     self.model.start_scores,
+                     self.model.end_scores],
                      self.model.get_feed_dict(batch))
 
             for i, question in enumerate(batch):
@@ -70,7 +76,8 @@ class Inferrer(object):
                 answers, answer_probs = self.extract_answers(context, starts[i],
                                                              ends[i], probs[i])
                 predictions[question.id] = InferenceResult(
-                    starts[i], ends[i], probs[i], answers, answer_probs)
+                    starts[i], ends[i], probs[i], start_scores[i], end_scores[i],
+                    answers, answer_probs, question)
 
         return predictions
 

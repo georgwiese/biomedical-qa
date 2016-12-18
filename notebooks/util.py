@@ -51,29 +51,42 @@ def text_heatmap(tokens, scores, token_highlight=None):
                            verticalalignment='center')
     
     
-def print_question(batch, rev_vocab):
-    question = [rev_vocab[w] for w in batch[0].question]
+def print_question(qa_setting, rev_vocab):
+    question = [rev_vocab[w] for w in qa_setting.question]
     print("Question:")
     print(' '.join(question))
     print()
 
-def print_answers(batch, rev_vocab):
-    answers = [' '.join([rev_vocab[w] for w in a]) for a in batch[0].answers]
+def print_answers(qa_setting, rev_vocab):
+    answers = [' '.join([rev_vocab[w] for w in a]) for a in qa_setting.answers]
     print("Answers:")
     print(answers)
     print()
 
-def print_predicted(batch, answer_start, answer_end, rev_vocab):
-    predicted =  " ".join([rev_vocab[i] for i in batch[0].context[answer_start:answer_end+1]])
+def print_predicted(qa_setting, answer_start, answer_end, rev_vocab):
+    predicted =  " ".join([rev_vocab[i] for i in qa_setting.context[answer_start:answer_end+1]])
     print("Predicted:")
     print(predicted)
     print()
 
-def print_context(batch, rev_vocab):
-    context = [rev_vocab[w] for w in batch[0].context]
+def print_context(qa_setting, rev_vocab):
+    context = [rev_vocab[w] for w in qa_setting.context]
     print("Context:")
     print(' '.join(context))
     print()
+    
+    
+def print_list(string_list):
+    
+    for s in string_list:
+        print(" * " + str(s))
+        
+        
+def maybe_flatten_list(l):
+    
+    if isinstance(l[0], str):
+        l = [l]
+    return [x for sublist in l for x in sublist]
     
     
 def softmax(w):
@@ -81,10 +94,10 @@ def softmax(w):
     dist = e / np.sum(e)
     return dist
 
-def find_correct_tokens(batch):
+def find_correct_tokens(qa_setting):
     """Returns a boolean np array of length len(tokens) that states if the token is part of an answer."""
-    answers = batch[0].answers
-    tokens = batch[0].context
+    answers = qa_setting.answers
+    tokens = qa_setting.context
     
     is_correct = np.zeros(len(tokens), dtype=np.bool)
     for i, start_token in enumerate(tokens):
