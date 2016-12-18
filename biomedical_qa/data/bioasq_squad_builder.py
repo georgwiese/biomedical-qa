@@ -187,7 +187,7 @@ class BioAsqSquadBuilder(object):
         answer = answer.strip().lower()
         if answer.startswith("the "):
             answer = answer[4:]
-        if re.search(r"[^\w]$", answer) is not None:
+        if re.search(r"[^\w\)]$", answer) is not None:
             # Ends with punctuation
             answer = answer[:-1]
 
