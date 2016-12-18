@@ -105,7 +105,7 @@ class Inferrer(object):
 
         # Sort by new probability
         answers_probs = list(zip(answers, filtered_probs))
-        answers_probs.sort(key=lambda x : x[1])
+        answers_probs.sort(key=lambda x : -x[1])
 
         return zip(*answers_probs)
 
