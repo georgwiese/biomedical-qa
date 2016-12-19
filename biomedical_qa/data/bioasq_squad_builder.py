@@ -8,9 +8,14 @@ class BioAsqSquadBuilder(object):
     """Converts BioASQ JSON objects to (enriched) SQuAD JSON objects."""
 
 
-    def __init__(self, bioasq_json, context_token_limit=-1, include_answers=True):
+    def __init__(self, bioasq_json, context_token_limit=-1,
+                 include_answers=True, types=None):
 
         self._bioasq_json = bioasq_json
+        self._types = types
+        if self._types is None:
+            self._types = ["factoid", "list"]
+
         self._tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
         self._context_token_limit = context_token_limit
         self._include_answers = include_answers
@@ -71,7 +76,7 @@ class BioAsqSquadBuilder(object):
 
         for question in questions:
 
-            if not question["type"] in ["factoid", "list"]:
+            if not question["type"] in self._types:
                 continue
 
             if len(question["snippets"]) == 0:
@@ -100,14 +105,20 @@ class BioAsqSquadBuilder(object):
         }
 
         if self._include_answers:
-            answers = self.get_answers(question, context)
 
-            if answers is None:
-                return None
+            if question["type"] in ["factoid", "list"]:
+                answers = self.get_extractive_answers(question, context)
 
-            paragraph["qas"][0]["answers"] = answers
-            paragraph["qas"][0]["original_answers"] = question["exact_answer"]
+                if answers is None:
+                    return None
 
+                paragraph["qas"][0]["answers"] = answers
+                paragraph["qas"][0]["original_answers"] = question["exact_answer"]
+
+            if question["type"] == "yesno":
+
+                is_yes = question["exact_answer"].lower() in ["yes", "yes."]
+                paragraph["qas"][0]["answer_is_yes"] = is_yes
 
         return paragraph
 
@@ -142,7 +153,7 @@ class BioAsqSquadBuilder(object):
         return " ".join(filtered_snippets)
 
 
-    def get_answers(self, question, context):
+    def get_extractive_answers(self, question, context):
 
         context = context.lower()
 

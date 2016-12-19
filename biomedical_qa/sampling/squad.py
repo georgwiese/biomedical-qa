@@ -23,7 +23,8 @@ def trfm(s, vocab=None, unk_id=None):
 
 class SQuADSampler:
     def __init__(self, dir, filenames, batch_size, vocab,
-                 instances_per_epoch=None, shuffle=True, dataset_json=None):
+                 instances_per_epoch=None, shuffle=True, dataset_json=None,
+                 types=["factoid", "list"]):
         self.__batch_size = batch_size
         self.unk_id = vocab["<UNK>"]
         self.start_id = vocab["<S>"]
@@ -57,12 +58,15 @@ class SQuADSampler:
                             answer_spans.append((start, start + len(answer)))
                             answers.append(answer)
                     q_type = qa["question_type"] if "question_type" in qa else None
-                    self._qas.append(QASetting(trfm(qa["question"], vocab, self.unk_id)[0], answers,
-                                               context, answer_spans,
-                                               id=qa["id"],
-                                               q_type=q_type,
-                                               paragraph_json=paragraph,
-                                               question_json=qa))
+                    is_yes = qa["answer_is_yes"] if "answer_is_yes" in qa else None
+                    if q_type is None or q_type in types:
+                        self._qas.append(QASetting(trfm(qa["question"], vocab, self.unk_id)[0], answers,
+                                                   context, answer_spans,
+                                                   id=qa["id"],
+                                                   q_type=q_type,
+                                                   is_yes=is_yes,
+                                                   paragraph_json=paragraph,
+                                                   question_json=qa))
                     self.char_offsets[qa["id"]] = offsets
 
         if shuffle:

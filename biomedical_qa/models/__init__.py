@@ -17,6 +17,7 @@ class QASetting:
                  answer_candidate_spans=None,
                  id=None,
                  q_type=None,
+                 is_yes=None,
                  paragraph_json=None,
                  question_json=None):
         """
@@ -33,6 +34,7 @@ class QASetting:
         self.answer_candidate_spans = answer_candidate_spans
         self.id = id
         self.q_type = q_type
+        self.is_yes = is_yes
         self.paragraph_json = paragraph_json
         self.question_json = question_json
 

@@ -2,12 +2,18 @@ import os
 import sys
 import json
 import numpy as np
+import tensorflow as tf
 
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
 
-TRAIN_FRACTION = 0.8
-# Max is ~4300, SQuAD max is ~700
-CONTEXT_TOKEN_LIMIT = 700
+
+tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
+tf.app.flags.DEFINE_string('out_dir', None, 'Path to the output directory.')
+tf.app.flags.DEFINE_string('types', "factoid,list", 'Comma-separated list of question types.')
+tf.app.flags.DEFINE_float('train_fraction', 0.8, 'Fraction of training data.')
+tf.app.flags.DEFINE_integer('context_token_limit', -1, 'Maximum number of context tokens. Max on BioASQ is ~4300 and on SQuAD ~700.')
+
+FLAGS = tf.app.flags.FLAGS
 
 np.random.seed(1234)
 
@@ -17,7 +23,8 @@ def convert_to_squad(bioasq_file_path, out_dir):
     with open(bioasq_file_path) as json_file:
         data = json.load(json_file)
 
-    squad_builder = BioAsqSquadBuilder(data, CONTEXT_TOKEN_LIMIT)
+    squad_builder = BioAsqSquadBuilder(data, FLAGS.context_token_limit,
+                                       types=FLAGS.types.split(","))
     squad_builder.build()
     stats = squad_builder.get_stats()
 
@@ -55,7 +62,7 @@ def convert_to_squad(bioasq_file_path, out_dir):
 def split_paragraphs(paragraphs):
 
     dataset_size = len(paragraphs)
-    train_size = int(TRAIN_FRACTION * dataset_size)
+    train_size = int(FLAGS.train_fraction * dataset_size)
 
     train_indices = np.random.choice(dataset_size, train_size, replace=False)
 
@@ -71,10 +78,4 @@ def split_paragraphs(paragraphs):
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 3:
-
-        print("Usage: %s <BioASQ json file> <out dir>" % sys.argv[0])
-        exit(1)
-
-    _, bioasq_file_path, out_dir = sys.argv
-    convert_to_squad(bioasq_file_path, out_dir)
+    convert_to_squad(FLAGS.bioasq_file, FLAGS.out_dir)
