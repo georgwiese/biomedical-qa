@@ -136,10 +136,11 @@ class ExtractionQATrainer(Trainer):
             else:
                 # search for offsets
                 for a in qa_setting.answers:
-                    for position in range(len(qa_setting.context)-len(a)):
+                    # TODO: Handle Multiple Contexts
+                    for position in range(len(qa_setting.contexts[0])-len(a)):
                         has_answer = True
                         for j in range(len(a)):
-                            if a[j] != qa_setting.context[position+j]:
+                            if a[j] != qa_setting.contexts[0][position+j]:
                                 has_answer = False
                                 break
                         if has_answer:

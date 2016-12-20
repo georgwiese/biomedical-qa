@@ -134,13 +134,14 @@ class ExtractionQAModel(QAModel):
         context = []
         context_length = []
 
-        max_q_length = len(max(qa_settings, key=lambda x: len(x.question)).question)
-        max_c_length = len(max(qa_settings, key=lambda x: len(x.context)).context)
+        max_q_length = max([len(s.question) for s in qa_settings])
+        max_c_length = max([len(c) for s in qa_settings for c in s.contexts])
         for i, qa_setting in enumerate(qa_settings):
             question.append(qa_setting.question + [0] * (max_q_length - len(qa_setting.question)))
             question_length.append(len(qa_setting.question))
-            context.append(qa_setting.context + [0] * (max_c_length - len(qa_setting.context)))
-            context_length.append(len(qa_setting.context))
+            for c in qa_setting.contexts:
+                context.append(c + [0] * (max_c_length - len(c)))
+                context_length.append(len(c))
 
         feed_dict = dict()
         feed_dict.update(self.embedder.get_feed_dict(context, context_length))

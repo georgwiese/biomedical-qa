@@ -11,7 +11,7 @@ wikireading_max_answer_length = 46 + 2 # including <S> and </S>
 wikireading_max_question_length = 10
 
 class QASetting:
-    def __init__(self, question, answers, context,
+    def __init__(self, question, answers, contexts,
                  answer_spans=None,
                  answer_candidates=None,
                  answer_candidate_spans=None,
@@ -23,12 +23,12 @@ class QASetting:
         """
         :param question: list of indices
         :param answers:  list of list of indices
-        :param context: list of indices
+        :param contexts: list of list indices
         :return:
         """
         self.question = question
         self.answers = answers
-        self.context = context
+        self.contexts = contexts
         self.answer_spans = answer_spans
         self.answer_candidates = answer_candidates
         self.answer_candidate_spans = answer_candidate_spans
@@ -40,13 +40,8 @@ class QASetting:
 
     def translate(self, vocab, unk_id):
         self.question = [vocab.get(w, unk_id) for w in self.question]
-        self.context = [vocab.get(w, unk_id) for w in self.context]
+        self.contexts = [[vocab.get(w, unk_id) for w in c] for c in self.contexts]
         self.answers = [[vocab.get(w, unk_id) for w in a] for a in self.answers]
-
-    @staticmethod
-    def from_dict(d):
-        return QASetting(d["question"], d["answers"], d["context"], d.get("answer_spans", None),
-                         d.get("answer_candidates", None), d.get("answer_candidate_spans", None))
 
 from biomedical_qa.models.qa_pointer import QAPointerModel
 
