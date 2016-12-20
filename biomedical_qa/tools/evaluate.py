@@ -1,3 +1,4 @@
+import logging
 import json
 import os
 import sys
@@ -33,7 +34,9 @@ def bioasq_evaluation(sampler, inferrer):
         "Questions must be augmented with original_answers to perform BioASQ evaluation."
     assert paragraphs[0]["qas"][0]["question_type"] is not None, \
         "Questions must be augmented with question_type to perform BioASQ evaluation."
-    assert FLAGS.beam_size >= 5, "Beamsize must be at least 5 to get 5 ranked answers."
+
+    if FLAGS.beam_size < 5:
+        logging.warning("Beam size should be at least 5 in order to get 5 ranked answers.")
 
     # Assuming one question per paragraph
     count = len(paragraphs)

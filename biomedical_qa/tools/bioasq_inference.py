@@ -70,4 +70,4 @@ if __name__ == "__main__":
 
     os.makedirs(os.path.dirname(FLAGS.out_file), exist_ok=True)
     with open(FLAGS.out_file, "w") as f:
-        json.dump(bioasq_json, f, indent=2)
+        json.dump(bioasq_json, f, indent=2, sort_keys=True)
