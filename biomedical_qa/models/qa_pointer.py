@@ -66,6 +66,7 @@ class QAPointerModel(ExtractionQAModel):
                                                                          biases_initializer=None,
                                                                          scope="attention")
                     attention_scores = tf.squeeze(attention_scores, [2])
+                    attention_scores += tfutil.mask_for_lengths(self.question_length)
                     attention_weights = tf.nn.softmax(attention_scores)
                     attention_weights = tf.expand_dims(attention_weights, 2)
                     self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
