@@ -122,3 +122,45 @@ def unit_length(tensor):
     l2norm_sq = tf.reduce_sum(tensor * tensor, 1, keep_dims=True)
     l2norm = tf.rsqrt(l2norm_sq)
     return tensor * l2norm
+
+
+def segment_softmax(scores, partition):
+    """Given scores and a partition, converts scores to probs by performing
+    softmax over all rows within a partition."""
+
+    # Subtract max
+    max_per_partition = tf.segment_max(tf.reduce_max(scores, axis=1), partition)
+    scores -= tf.expand_dims(tf.gather(max_per_partition, partition), axis=1)
+
+    # Compute probs
+    scores_exp = tf.exp(scores)
+    scores_exp_sum_per_partition = tf.segment_sum(tf.reduce_sum(scores_exp, axis=1), partition)
+    probs = scores_exp / tf.expand_dims(tf.gather(scores_exp_sum_per_partition, partition), axis=1)
+
+    return probs
+
+
+def segment_argmax(input, partition):
+    """Computes a [num_partitions, 2] Tensor of row/col indices of the segment max."""
+
+    num_partitions = tf.reduce_max(partition)
+
+    max_per_partition = tf.segment_max(tf.reduce_max(input, axis=1), partition)
+    is_max = tf.equal(input, tf.expand_dims(tf.gather(max_per_partition, partition), axis=1))
+
+    # Corrent segment_max() implementation assumes that only one element is equal to the maximum.
+    assert_op = tf.Assert(tf.equal(num_partitions, tf.reduce_sum(is_max)),
+                          [num_partitions, tf.reduce_sum(is_max)])
+
+    with tf.control_dependencies([assert_op]):
+
+        # Get selected rows and columns
+        row_selected = tf.reduce_max(is_max, axis=1)
+        row_indices = tf.range(tf.shape(input)[0])[row_selected]
+
+        selected_rows_is_max = tf.gather(is_max, row_indices)
+        col_indices = tf.argmax(selected_rows_is_max, axis=1)
+
+        # Pack indices
+        return tf.transpose(tf.pack([row_indices, col_indices]))
+
