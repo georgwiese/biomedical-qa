@@ -1,24 +1,10 @@
 import json
 import os
-from nltk.tokenize import RegexpTokenizer
 import random
 
+from nltk.tokenize import RegexpTokenizer
+
 from biomedical_qa.models import QASetting
-
-TOKENIZER = RegexpTokenizer(r'\w+|[^\w\s]')
-
-def trfm(s, vocab=None, unk_id=None):
-    idxs = []
-    offsets = []
-    offset = 0
-    for t in TOKENIZER.tokenize(s):
-        offset = s.index(t, offset)
-        offsets.append(offset)
-        if vocab is not None and unk_id is not None:
-            i = vocab.get(t, unk_id)
-            idxs.append(i)
-        offset += len(t)
-    return idxs, offsets
 
 
 class SQuADSampler:
@@ -40,33 +26,50 @@ class SQuADSampler:
                 dataset_json = json.load(dataset_file)
         dataset = dataset_json['data']
         self._qas = []
-        self.char_offsets = {}
+
+        tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
+
+        def trfm(s):
+            idxs = []
+            offsets = []
+            offset = 0
+            for t in tokenizer.tokenize(s):
+                offset = s.index(t, offset)
+                offsets.append(offset)
+                i = vocab.get(t, self.unk_id)
+                idxs.append(i)
+                offset += len(t)
+            return idxs, offsets
+
+        self.char_offsets = dict()
 
         for article in dataset:
             for paragraph in article["paragraphs"]:
-                context, offsets = trfm(paragraph["context"], vocab, self.unk_id)
+                context, offsets = trfm(paragraph["context"])
                 for qa in paragraph["qas"]:
                     answers = []
                     answer_spans = []
                     answers_json = qa["answers"] if "answers" in qa else []
                     for a in answers_json:
-                        answer = trfm(a["text"], vocab, self.unk_id)[0]
-                        if a["answer_start"] in offsets:
+                        answer = trfm(a["text"])[0]
+                        if answer and a["answer_start"] in offsets:
                             start = offsets.index(a["answer_start"])
                             if (start, start + len(answer)) in answer_spans:
                                 continue
                             answer_spans.append((start, start + len(answer)))
                             answers.append(answer)
+
                     q_type = qa["question_type"] if "question_type" in qa else None
                     is_yes = qa["answer_is_yes"] if "answer_is_yes" in qa else None
                     if q_type is None or q_type in types:
-                        self._qas.append(QASetting(trfm(qa["question"], vocab, self.unk_id)[0], answers,
+                        self._qas.append(QASetting(trfm(qa["question"])[0], answers,
                                                    context, answer_spans,
                                                    id=qa["id"],
                                                    q_type=q_type,
                                                    is_yes=is_yes,
                                                    paragraph_json=paragraph,
                                                    question_json=qa))
+
                     self.char_offsets[qa["id"]] = offsets
 
         if shuffle:

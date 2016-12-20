@@ -1,11 +1,9 @@
 import pickle
 import os
 import logging
-import sys
 
 import tensorflow as tf
 
-from biomedical_qa.sampling.squad import trfm
 from biomedical_qa.models import model_from_config
 
 
@@ -74,7 +72,8 @@ class Inferrer(object):
                 context = question.paragraph_json["context_original_capitalization"]
 
                 answers, answer_probs = self.extract_answers(context, starts[i],
-                                                             ends[i], probs[i])
+                                                             ends[i], probs[i],
+                                                             sampler.char_offsets[question.id])
                 predictions[question.id] = InferenceResult(
                     starts[i], ends[i], probs[i], start_scores[i], end_scores[i],
                     answers, answer_probs, question)
@@ -82,7 +81,7 @@ class Inferrer(object):
         return predictions
 
 
-    def extract_answers(self, context, starts, ends, probs):
+    def extract_answers(self, context, starts, ends, probs, char_offsets):
 
         answer2index = {}
         answers = []
@@ -91,7 +90,7 @@ class Inferrer(object):
         assert len(starts) == len(ends)
 
         for i in range(len(starts)):
-            answer = self.extract_answer(context, (starts[i], ends[i]))
+            answer = self.extract_answer(context, (starts[i], ends[i]), char_offsets)
 
             # Deduplicate
             if answer.lower() not in answer2index:
@@ -110,10 +109,9 @@ class Inferrer(object):
         return zip(*answers_probs)
 
 
-    def extract_answer(self, context, answer_span):
+    def extract_answer(self, context, answer_span, char_offsets):
 
         token_start, token_end = answer_span
-        _, char_offsets = trfm(context)
 
         if token_start >= len(char_offsets):
             logging.warning("Null word selected! Using first token instead.")
