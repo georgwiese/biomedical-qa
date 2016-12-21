@@ -4,11 +4,6 @@ from biomedical_qa.models.embedder import Embedder,WordEmbedder,CharWordEmbedder
     ConstantWordEmbedder
 from biomedical_qa.models.context_embedder import ContextEmbedder,RNNContextEmbedder,AttentionMemoryContextEmbedder
 
-""" Largest answer in wikireading
-A History of the Clan MacLean from Its First Settlement at Duard Castle, in the Isle of Mull, to the Present Period: Including a Genealogical Account of Some of the Principal Families Together with Their Heraldry, Legends, Superstitions, etc.
-"""
-wikireading_max_answer_length = 46 + 2 # including <S> and </S>
-wikireading_max_question_length = 10
 
 class QASetting:
     def __init__(self, question, answers, contexts,
@@ -24,6 +19,7 @@ class QASetting:
         :param question: list of indices
         :param answers:  list of list of indices
         :param contexts: list of list indices
+        :param answer_spans: list of (context_index, start, end) tuples
         :return:
         """
         self.question = question

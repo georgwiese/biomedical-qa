@@ -15,6 +15,7 @@ class ExtractionQATrainer(Trainer):
         Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
+        self.answer_context_indices = tf.placeholder(tf.int64, shape=[None], name="answer_context_index")
         self.answer_starts = tf.placeholder(tf.int64, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int64, shape=[None], name="answer_end")
 
@@ -119,6 +120,7 @@ class ExtractionQATrainer(Trainer):
         return f1, exact
 
     def get_feed_dict(self, qa_settings):
+        answer_context_indices = []
         answer_starts = []
         answer_ends = []
         answer_partition = []
@@ -126,34 +128,22 @@ class ExtractionQATrainer(Trainer):
         k = 0
         filtered_qa_settings = list()
         for i, qa_setting in enumerate(qa_settings):
-            if qa_setting.answer_spans:
-                for j, span in enumerate(qa_setting.answer_spans):
-                    if span:
-                        (start, end) = span
-                        answer_starts.append(start)
-                        answer_ends.append(end - 1)
-                        answer_partition.append(k)
-            else:
-                # search for offsets
-                for a in qa_setting.answers:
-                    # TODO: Handle Multiple Contexts
-                    for position in range(len(qa_setting.contexts[0])-len(a)):
-                        has_answer = True
-                        for j in range(len(a)):
-                            if a[j] != qa_setting.contexts[0][position+j]:
-                                has_answer = False
-                                break
-                        if has_answer:
-                            answer_starts.append(position)
-                            answer_ends.append(position+len(a)-1)
-                            answer_partition.append(k)
+            for j, span in enumerate(qa_setting.answer_spans):
+                if span:
+                    (context_index, start, end) = span
+                    answer_context_indices.append(context_index)
+                    answer_starts.append(start)
+                    answer_ends.append(end - 1)
+                    answer_partition.append(k)
 
             if answer_partition and answer_partition[-1] == k:
                 k += 1
                 filtered_qa_settings.append(qa_setting)
 
         feed_dict = self.model.get_feed_dict(filtered_qa_settings)
+        # TODO: Feed correct answer context indices
         feed_dict[self.model.correct_start_pointer] = answer_starts
+        feed_dict[self.answer_context_indices] = answer_context_indices
         feed_dict[self.answer_starts] = answer_starts
         feed_dict[self.answer_ends] = answer_ends
         feed_dict[self.model.answer_partition] = answer_partition

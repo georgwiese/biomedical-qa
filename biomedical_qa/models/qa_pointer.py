@@ -46,6 +46,7 @@ class QAPointerModel(ExtractionQAModel):
             self._set_eval = self._eval.assign(True)
 
             self._beam_size = tf.get_variable("beam_size", initializer=1, trainable=False)
+            self.paragraph2question = tf.placeholder(tf.int64, [None], "paragraph2question")
 
             # Fed during Training
             self.correct_start_pointer = - tf.ones([self._batch_size], tf.int64) # Dummy value
@@ -59,8 +60,7 @@ class QAPointerModel(ExtractionQAModel):
                         self.question_length, projection_scope="question_proj")
 
                     # single time attention over question
-                    enc_question = tf.slice(self.encoded_question, [0, 0, 0], [-1, -1, self.size])
-                    attention_scores = tf.contrib.layers.fully_connected(enc_question, 1,
+                    attention_scores = tf.contrib.layers.fully_connected(self.encoded_question, 1,
                                                                          activation_fn=None,
                                                                          weights_initializer=None,
                                                                          biases_initializer=None,
@@ -70,6 +70,10 @@ class QAPointerModel(ExtractionQAModel):
                     attention_weights = tf.nn.softmax(attention_scores)
                     attention_weights = tf.expand_dims(attention_weights, 2)
                     self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
+
+                    # Multiply question features for each paragraph
+                    self.encoded_question = tf.gather(self.encoded_question, self.paragraph2question)
+                    self.question_representation = tf.gather(self.question_representation, self.paragraph2question)
 
                     self.encoded_ctxt = self._preprocessing_layer(
                         cell_constructor, self.embedded_context, self.context_length,
