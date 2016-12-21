@@ -15,9 +15,9 @@ class ExtractionQATrainer(Trainer):
         Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
-        self.answer_context_indices = tf.placeholder(tf.int64, shape=[None], name="answer_context_index")
         self.answer_starts = tf.placeholder(tf.int64, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int64, shape=[None], name="answer_end")
+        self.answer_partition = tf.placeholder(tf.int64, shape=[None], name="answer_partition")
 
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
@@ -127,14 +127,15 @@ class ExtractionQATrainer(Trainer):
 
         k = 0
         filtered_qa_settings = list()
+        start_context_index = 0
         for i, qa_setting in enumerate(qa_settings):
             for j, span in enumerate(qa_setting.answer_spans):
-                if span:
-                    (context_index, start, end) = span
-                    answer_context_indices.append(context_index)
-                    answer_starts.append(start)
-                    answer_ends.append(end - 1)
-                    answer_partition.append(k)
+                (context_index, start, end) = span
+                answer_context_indices.append(start_context_index + context_index)
+                answer_starts.append(start)
+                answer_ends.append(end - 1)
+                answer_partition.append(k)
+            start_context_index += len(qa_setting.answer_spans)
 
             if answer_partition and answer_partition[-1] == k:
                 k += 1
@@ -143,10 +144,10 @@ class ExtractionQATrainer(Trainer):
         feed_dict = self.model.get_feed_dict(filtered_qa_settings)
         # TODO: Feed correct answer context indices
         feed_dict[self.model.correct_start_pointer] = answer_starts
-        feed_dict[self.answer_context_indices] = answer_context_indices
+        feed_dict[self.model.answer_context_indices] = answer_context_indices
         feed_dict[self.answer_starts] = answer_starts
         feed_dict[self.answer_ends] = answer_ends
-        feed_dict[self.model.answer_partition] = answer_partition
+        feed_dict[self.answer_partition] = answer_partition
         # start weights are given when computing end-weights
         #if not is_eval:
         #    feed_dict[self.model.predicted_start_pointer] = answer_starts

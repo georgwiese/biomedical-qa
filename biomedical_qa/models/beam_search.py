@@ -3,18 +3,18 @@ import tensorflow as tf
 class BeamSearchDecoder(object):
 
 
-    def __init__(self, beam_size, answer_partition):
+    def __init__(self, beam_size, answer_context_indices):
 
         self._beam_size = beam_size
-        self._answer_partition = answer_partition
+        self._answer_context_indices = answer_context_indices
 
 
     def receive_start_scores(self, start_scores):
 
-        self._start_scores = tf.gather(start_scores, self._answer_partition)
+        self._start_scores = tf.gather(start_scores, self._answer_context_indices)
 
         start_probs = tf.nn.softmax(start_scores)
-        start_probs = tf.gather(start_probs, self._answer_partition)
+        start_probs = tf.gather(start_probs, self._answer_context_indices)
         top_start_probs, top_starts = tf.nn.top_k(start_probs, self._beam_size)
 
         self._top_start_probs = tf.reshape(top_start_probs, [-1])

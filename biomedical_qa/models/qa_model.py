@@ -90,6 +90,9 @@ class ExtractionQAModel(QAModel):
             self._top_k_placeholder = tf.placeholder(tf.int32, tuple(), "top_k_placeholder")
             self._set_top_k = self.top_k.assign(self._top_k_placeholder)
 
+            # Maps context index to question index
+            self.context_partition = tf.placeholder(tf.int64, None, "top_k_placeholder")
+
             with tf.variable_scope("embeddings"):
                 # embeddings
                 self._batch_size = self.embedder.batch_size
@@ -134,6 +137,8 @@ class ExtractionQAModel(QAModel):
         context = []
         context_length = []
 
+        context_partition = []
+
         max_q_length = max([len(s.question) for s in qa_settings])
         max_c_length = max([len(c) for s in qa_settings for c in s.contexts])
         for i, qa_setting in enumerate(qa_settings):
@@ -142,8 +147,10 @@ class ExtractionQAModel(QAModel):
             for c in qa_setting.contexts:
                 context.append(c + [0] * (max_c_length - len(c)))
                 context_length.append(len(c))
+                context_partition.append(i)
 
         feed_dict = dict()
+        feed_dict[self.context_partition] = context_partition
         feed_dict.update(self.embedder.get_feed_dict(context, context_length))
         feed_dict.update(self.question_embedder.get_feed_dict(question, question_length))
 

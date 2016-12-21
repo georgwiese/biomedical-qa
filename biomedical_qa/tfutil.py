@@ -156,7 +156,7 @@ def segment_argmax(input, partition):
 
         # Get selected rows and columns
         row_selected = tf.reduce_max(is_max, axis=1)
-        row_indices = tf.range(tf.shape(input)[0])[row_selected]
+        row_indices = tf.where(row_selected)
 
         selected_rows_is_max = tf.gather(is_max, row_indices)
         col_indices = tf.argmax(selected_rows_is_max, axis=1)
