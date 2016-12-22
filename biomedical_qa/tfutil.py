@@ -141,7 +141,7 @@ def segment_softmax(scores, partition):
 
 
 def segment_argmax(input, partition):
-    """Computes a [num_partitions, 2] Tensor of row/col indices of the segment max."""
+    """Computes row and col indices Tensors of the segment max in the 2D input."""
 
     num_partitions = tf.reduce_max(partition)
 
@@ -162,5 +162,49 @@ def segment_argmax(input, partition):
         col_indices = tf.argmax(selected_rows_is_max, axis=1)
 
         # Pack indices
-        return tf.transpose(tf.pack([row_indices, col_indices]))
+        return row_indices, col_indices
 
+
+def gather_rowwise_indices_1d(indices):
+    """Transforms 1D indices tensor to _indices such that:
+    tf.gather_nd(some_2d_tensor, _indices) is equivalent to:
+         rows = [tf.gather(some_2d_tensor[i], indices[i]) for i in range(n_rows)]
+         result = tf.pack(rows)
+    """
+
+    rows = tf.shape(indices)[0]
+
+    # Compute [rows, 2] indices tensor of [row_index, col_index] entries
+    row_index = tf.range(rows)
+    _indices = tf.transpose(tf.pack([row_index, indices]))
+
+    return _indices
+
+
+def gather_rowwise_indices_2d(indices):
+    """Transforms 2D indices tensor to _indices such that:
+    tf.gather_nd(some_2d_tensor, _indices) is equivalent to:
+         rows = [tf.gather(some_2d_tensor[i], indices[i]) for i in range(n_rows)]
+         result = tf.pack(rows)
+    """
+
+    rows = tf.shape(indices)[0]
+    cols = tf.shape(indices)[1]
+
+    # Compute [rows, cols, 2] indices tensor of [row_index, col_index] entries
+    row_index = tf.expand_dims(tf.range(rows), 1)
+    row_index_tiled = tf.tile(row_index, tf.pack([1, cols]))
+    _indices = tf.pack([row_index_tiled, indices])
+    _indices = tf.transpose(_indices, [1, 2, 0])
+
+    return _indices
+
+
+def gather_rowwise_1d(input, indices):
+
+    return tf.gather_nd(input, gather_rowwise_indices_1d(indices))
+
+
+def gather_rowwise_2d(input, indices):
+
+    return tf.gather_nd(input, gather_rowwise_indices_2d(indices))

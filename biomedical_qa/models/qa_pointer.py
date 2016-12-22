@@ -93,6 +93,7 @@ class QAPointerModel(ExtractionQAModel):
 
                 with tf.variable_scope("pointer_layer"):
                     if self._answer_layer_type == "spn":
+                        self.predicted_context_indices, \
                         self._start_scores, self._start_pointer, self.start_probs, \
                         self._end_scores, self._end_pointer, self.end_probs = \
                             self._spn_answer_layer(self.question_representation, self.matched_output)
@@ -171,7 +172,7 @@ class QAPointerModel(ExtractionQAModel):
             start_scores = hmn(question_state, context_states,
                                self.context_length)
             # TODO: Handle new format
-            starts = tfutil.segment_argmax(start_scores, self.paragraph2question)
+            contexts, starts = tfutil.segment_argmax(start_scores, self.paragraph2question)
             start_probs = tfutil.segment_softmax(start_scores, self.paragraph2question)
 
         # From now on, answer_context_indices and correct_start_pointer need to be fed.
@@ -200,7 +201,7 @@ class QAPointerModel(ExtractionQAModel):
                              lambda: masked_end_scores,
                              lambda: end_scores)
 
-        return start_scores, starts, start_probs, end_scores, ends, end_probs
+        return contexts, start_scores, starts, start_probs, end_scores, ends, end_probs
 
     def set_eval(self, sess):
         super().set_eval(sess)

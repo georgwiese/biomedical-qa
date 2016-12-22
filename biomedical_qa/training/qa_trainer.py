@@ -2,6 +2,7 @@ import sys
 import tensorflow as tf
 import numpy as np
 
+from biomedical_qa import tfutil
 from biomedical_qa.models.crf import crf_log_likelihood
 from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import Trainer
@@ -22,25 +23,19 @@ class ExtractionQATrainer(Trainer):
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
 
-        start_scores = model.start_scores
-        end_scores = model.end_scores
-        if isinstance(start_scores, list):
-            losses = list()
-            for s, e in zip(start_scores, end_scores):
-                losses.append(tf.nn.sparse_softmax_cross_entropy_with_logits(s, self.answer_starts) + \
-                       tf.nn.sparse_softmax_cross_entropy_with_logits(e, self.answer_ends))
+        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
+        end_probs = model.end_probs
+        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
+        correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
 
-            loss = tf.add_n(losses) / len(losses)
-        else:
-            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(start_scores, self.answer_starts) + \
-                   tf.nn.sparse_softmax_cross_entropy_with_logits(end_scores, self.answer_ends)
+        loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
 
         loss = tf.segment_min(loss, self.model.answer_partition)
         self._loss = tf.reduce_mean(loss)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
-
+        context_indices = model.predicted_context_indices
         start_pointer = model.predicted_answer_starts
         end_pointer = model.predicted_answer_ends
 
@@ -53,12 +48,21 @@ class ExtractionQATrainer(Trainer):
         self.recall = tp / total
         self.precision = tp / (tp + fp + 1e-10)
 
-        self.f1 = tf.segment_max(2 * self.precision * self.recall / (self.precision + self.recall + 1e-10),
-                                 self.model.answer_partition)
+        f1_per_answer = 2 * self.precision * self.recall / (self.precision + self.recall + 1e-10)
+
+        # Set f1 to 0 if the predicted context index is not equal to the actual context index
+        contexts_equal = tf.equal(context_indices, self.model.answer_context_indices)
+        f1_per_answer = tf.select(contexts_equal,
+                                  f1_per_answer,
+                                  tf.zeros(tf.shape(f1_per_answer)))
+
+        self.f1 = tf.segment_max(f1_per_answer, self.model.answer_partition)
         self.mean_f1 = tf.reduce_mean(self.f1)
 
-        self.exact_matches = tf.segment_max(tf.cast(tf.logical_and(tf.equal(start_pointer, self.answer_starts),
-                                            tf.equal(end_pointer, self.answer_ends)), tf.int32),
+        pointers_equal = tf.logical_and(tf.equal(start_pointer, self.answer_starts),
+                                        tf.equal(end_pointer, self.answer_ends))
+        spans_equal = tf.logical_and(contexts_equal, pointers_equal)
+        self.exact_matches = tf.segment_max(tf.cast(spans_equal, tf.int32),
                                             self.model.answer_partition)
 
         if len(self._train_variable_prefixes):
