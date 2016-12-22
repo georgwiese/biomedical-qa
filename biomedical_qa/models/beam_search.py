@@ -4,11 +4,18 @@ import numpy as np
 
 class BeamSearchDecoderResult(object):
 
-    def __init__(self, starts, ends, probs):
+    def __init__(self, context_indices, starts, ends, probs):
 
+        assert len(context_indices) == len(starts) == len(ends) == len(probs)
+
+        self.context_indices = context_indices
         self.starts = starts
         self.ends = ends
         self.probs = probs
+
+    def __iter__(self):
+
+        return zip(self.context_indices, self.starts, self.ends, self.probs)
 
 
 class BeamSearchDecoder(object):
@@ -71,12 +78,17 @@ class BeamSearchDecoder(object):
                     self._model.question_representation: question_representation,
                 })
 
+        row_indices_per_question = [0] + np.cumsum([len(s.contexts) for s in qa_settings])[:-1]
+        context_indices = [row_index - start_row_index
+                           for row_index, start_row_index
+                           in zip(top_start_row_indices_per_partition,
+                                  row_indices_per_question)]
         ends = np.argmax(end_probs, axis=1)
-        starts = zip(top_start_row_indices_per_partition,
-                     top_start_col_indices_per_partition)
+        starts = top_start_col_indices_per_partition
         assert len(ends) == num_partitions
 
-        return [BeamSearchDecoderResult(starts=[starts[i]],
+        return [BeamSearchDecoderResult(context_indices=[context_indices[i]],
+                                        starts=[starts[i]],
                                         ends=[ends[i]],
                                         probs=[top_start_probs_per_partition[i] * end_probs[i]])
                 for i in range(num_partitions)]

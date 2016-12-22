@@ -5,18 +5,14 @@ import logging
 import tensorflow as tf
 
 from biomedical_qa.models import model_from_config
+from biomedical_qa.models.beam_search import BeamSearchDecoder
 
 
 class InferenceResult(object):
 
-    def __init__(self, starts, ends, probs, start_scores, end_scores,
-                 answer_strings, answer_probs, question):
+    def __init__(self, prediction, answer_strings, answer_probs, question):
 
-        self.starts = starts
-        self.ends = ends
-        self.probs = probs
-        self.start_scores = start_scores
-        self.end_scores = end_scores
+        self.prediction = prediction
         self.answer_strings = answer_strings
         self.answer_probs = answer_probs
         self.question = question
@@ -46,7 +42,8 @@ class Inferrer(object):
         self.sess.run(tf.global_variables_initializer())
         self.model.model_saver.restore(self.sess, model_weights_file)
         self.model.set_eval(self.sess)
-        self.model.set_beam_size(self.sess, beam_size)
+
+        self.beam_search_decoder = BeamSearchDecoder(self.sess, self.model, beam_size)
 
 
     def get_predictions(self, sampler):
@@ -60,47 +57,41 @@ class Inferrer(object):
 
             batch = sampler.get_batch()
 
-            starts, ends, probs, start_scores, end_scores = self.sess.run(
-                    [self.model.top_starts,
-                     self.model.top_ends,
-                     self.model.top_probs,
-                     self.model.start_scores,
-                     self.model.end_scores],
-                     self.model.get_feed_dict(batch))
+            predictions = self.beam_search_decoder.decode(batch)
 
             for i, question in enumerate(batch):
-                context = question.paragraph_json["context_original_capitalization"]
+                contexts = question.paragraph_json["contexts_original_capitalization"]
 
-                answers, answer_probs = self.extract_answers(context, starts[i],
-                                                             ends[i], probs[i],
+                answers, answer_probs = self.extract_answers(contexts, predictions[i],
                                                              sampler.char_offsets[question.id])
                 predictions[question.id] = InferenceResult(
-                    starts[i], ends[i], probs[i], start_scores[i], end_scores[i],
-                    answers, answer_probs, question)
+                    predictions[i], answers, answer_probs, question)
 
         return predictions
 
 
-    def extract_answers(self, context, starts, ends, probs, char_offsets):
+    def extract_answers(self, contexts, prediction, all_char_offsets):
 
         answer2index = {}
         answers = []
         filtered_probs = []
 
-        assert len(starts) == len(ends)
-
-        for i in range(len(starts)):
-            answer = self.extract_answer(context, (starts[i], ends[i]), char_offsets)
+        for context_index, start, end, prob in prediction:
+            context = contexts[context_index]
+            char_offsets = {token_index: char_offset
+                            for (c_index, token_index), char_offset in all_char_offsets.items()
+                            if c_index == context_index}
+            answer = self.extract_answer(context, (start, end), char_offsets)
 
             # Deduplicate
             if answer.lower() not in answer2index:
                 answer2index.update({answer.lower() : len(answers)})
                 answers.append(answer)
-                filtered_probs.append(probs[i])
+                filtered_probs.append(prob)
             else:
                 # Duplicate mentions should add their probs
                 index = answer2index[answer.lower()]
-                filtered_probs[index] += probs[i]
+                filtered_probs[index] += prob
 
         # Sort by new probability
         answers_probs = list(zip(answers, filtered_probs))
