@@ -51,7 +51,7 @@ class BeamSearchDecoder(object):
                 self._model.get_feed_dict(qa_settings))
 
         # Compute top starts their row indices
-        num_partitions = context_partition[-1]
+        num_partitions = context_partition[-1] + 1
         assert num_partitions == len(qa_settings)
         top_start_indices_per_context = np.argmax(start_probs, axis=1)
 
