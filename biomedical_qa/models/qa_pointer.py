@@ -44,8 +44,6 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            self.paragraph2question = tf.placeholder(tf.int64, [None], "paragraph2question")
-
             # Fed during Training & end pointer prediction
             self.correct_start_pointer = tf.placeholder(tf.int64, [None])
             self.answer_context_indices = tf.placeholder(tf.int64, [None])
@@ -70,8 +68,8 @@ class QAPointerModel(ExtractionQAModel):
                     self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
 
                     # Multiply question features for each paragraph
-                    self.encoded_question = tf.gather(self.encoded_question, self.paragraph2question)
-                    self.question_representation = tf.gather(self.question_representation, self.paragraph2question)
+                    self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
+                    self.question_representation = tf.gather(self.question_representation, self.context_partition)
 
                     self.encoded_ctxt = self._preprocessing_layer(
                         cell_constructor, self.embedded_context, self.context_length,
@@ -171,8 +169,8 @@ class QAPointerModel(ExtractionQAModel):
         with tf.variable_scope("start"):
             start_scores = hmn(question_state, context_states,
                                self.context_length)
-            contexts, starts = tfutil.segment_argmax(start_scores, self.paragraph2question)
-            start_probs = tfutil.segment_softmax(start_scores, self.paragraph2question)
+            contexts, starts = tfutil.segment_argmax(start_scores, self.context_partition)
+            start_probs = tfutil.segment_softmax(start_scores, self.context_partition)
 
         # From now on, answer_context_indices and correct_start_pointer need to be fed.
         # There will be an end pointer prediction for each start pointer.

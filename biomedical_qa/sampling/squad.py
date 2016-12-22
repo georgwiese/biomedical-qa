@@ -89,6 +89,6 @@ class SQuADSampler(BaseSampler):
 
                     char_offsets[qa["id"]] = {(context_index, token_index) : char_offset
                                               for char_offset, (context_index, token_index)
-                                              in char_offset_to_token_index}
+                                              in char_offset_to_token_index.items()}
 
         return qas, char_offsets

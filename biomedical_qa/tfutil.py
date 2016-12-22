@@ -143,26 +143,30 @@ def segment_softmax(scores, partition):
 def segment_argmax(input, partition):
     """Computes row and col indices Tensors of the segment max in the 2D input."""
 
-    num_partitions = tf.reduce_max(partition)
+    with tf.name_scope("segment_argmax"):
 
-    max_per_partition = tf.segment_max(tf.reduce_max(input, axis=1), partition)
-    is_max = tf.equal(input, tf.expand_dims(tf.gather(max_per_partition, partition), axis=1))
+        num_partitions = tf.reduce_max(partition) + 1
 
-    # Corrent segment_max() implementation assumes that only one element is equal to the maximum.
-    assert_op = tf.Assert(tf.equal(num_partitions, tf.reduce_sum(is_max)),
-                          [num_partitions, tf.reduce_sum(is_max)])
+        max_per_partition = tf.segment_max(tf.reduce_max(input, axis=1), partition)
+        is_max = tf.equal(input, tf.expand_dims(tf.gather(max_per_partition, partition), 1))
 
-    with tf.control_dependencies([assert_op]):
+        is_max_count = tf.reduce_sum(tf.cast(is_max, tf.int64))
+        assert_op = tf.assert_equal(num_partitions, is_max_count,
+                                    message="Current segment_max() implementation "
+                                            "assumes that only one element is equal "
+                                            "to the maximum.")
 
-        # Get selected rows and columns
-        row_selected = tf.reduce_max(is_max, axis=1)
-        row_indices = tf.where(row_selected)
+        with tf.control_dependencies([assert_op]):
 
-        selected_rows_is_max = tf.gather(is_max, row_indices)
-        col_indices = tf.argmax(selected_rows_is_max, axis=1)
+            # Get selected rows and columns
+            row_selected = tf.reduce_any(is_max, axis=1)
+            row_indices = tf.squeeze(tf.where(row_selected))
 
-        # Pack indices
-        return row_indices, col_indices
+            selected_rows_is_max = tf.gather(is_max, row_indices)
+            col_indices = tf.argmax(tf.cast(selected_rows_is_max, tf.int64), axis=1)
+
+            # Pack indices
+            return row_indices, col_indices
 
 
 def gather_rowwise_indices_1d(indices):
@@ -175,7 +179,7 @@ def gather_rowwise_indices_1d(indices):
     rows = tf.shape(indices)[0]
 
     # Compute [rows, 2] indices tensor of [row_index, col_index] entries
-    row_index = tf.range(rows)
+    row_index = tf.cast(tf.range(rows), tf.int64)
     _indices = tf.transpose(tf.pack([row_index, indices]))
 
     return _indices
@@ -202,7 +206,10 @@ def gather_rowwise_indices_2d(indices):
 
 def gather_rowwise_1d(input, indices):
 
-    return tf.gather_nd(input, gather_rowwise_indices_1d(indices))
+    with tf.name_scope("gather_rowwise_nd"):
+        return tf.gather_nd(input,
+                            tf.cast(gather_rowwise_indices_1d(indices),
+                                    tf.int32))
 
 
 def gather_rowwise_2d(input, indices):

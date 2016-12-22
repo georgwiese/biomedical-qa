@@ -91,7 +91,7 @@ class ExtractionQAModel(QAModel):
             self._set_top_k = self.top_k.assign(self._top_k_placeholder)
 
             # Maps context index to question index
-            self.context_partition = tf.placeholder(tf.int64, None, "top_k_placeholder")
+            self.context_partition = tf.placeholder(tf.int64, [None], "top_k_placeholder")
 
             with tf.variable_scope("embeddings"):
                 # embeddings

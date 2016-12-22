@@ -30,14 +30,14 @@ class ExtractionQATrainer(Trainer):
 
         loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
 
-        loss = tf.segment_min(loss, self.model.answer_partition)
+        loss = tf.segment_min(loss, self.answer_partition)
         self._loss = tf.reduce_mean(loss)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
-        context_indices = model.predicted_context_indices
-        start_pointer = model.predicted_answer_starts
-        end_pointer = model.predicted_answer_ends
+        context_indices = tf.gather(model.predicted_context_indices, self.answer_partition)
+        start_pointer = tf.gather(model.predicted_answer_starts, self.answer_partition)
+        end_pointer = tf.gather(model.predicted_answer_ends, self.answer_partition)
 
         missed_from_start = tf.cast(start_pointer - self.answer_starts, tf.int32)
         missed_from_end = tf.cast(self.answer_ends - end_pointer, tf.int32)
@@ -56,14 +56,14 @@ class ExtractionQATrainer(Trainer):
                                   f1_per_answer,
                                   tf.zeros(tf.shape(f1_per_answer)))
 
-        self.f1 = tf.segment_max(f1_per_answer, self.model.answer_partition)
+        self.f1 = tf.segment_max(f1_per_answer, self.answer_partition)
         self.mean_f1 = tf.reduce_mean(self.f1)
 
         pointers_equal = tf.logical_and(tf.equal(start_pointer, self.answer_starts),
                                         tf.equal(end_pointer, self.answer_ends))
         spans_equal = tf.logical_and(contexts_equal, pointers_equal)
         self.exact_matches = tf.segment_max(tf.cast(spans_equal, tf.int32),
-                                            self.model.answer_partition)
+                                            self.answer_partition)
 
         if len(self._train_variable_prefixes):
             train_variables = [v for v in model.train_variables
@@ -139,7 +139,7 @@ class ExtractionQATrainer(Trainer):
                 answer_starts.append(start)
                 answer_ends.append(end - 1)
                 answer_partition.append(k)
-            start_context_index += len(qa_setting.answer_spans)
+            start_context_index += len(qa_setting.contexts)
 
             if answer_partition and answer_partition[-1] == k:
                 k += 1
