@@ -171,7 +171,6 @@ class QAPointerModel(ExtractionQAModel):
         with tf.variable_scope("start"):
             start_scores = hmn(question_state, context_states,
                                self.context_length)
-            # TODO: Handle new format
             contexts, starts = tfutil.segment_argmax(start_scores, self.paragraph2question)
             start_probs = tfutil.segment_softmax(start_scores, self.paragraph2question)
 
