@@ -6,7 +6,6 @@ from tensorflow.python.ops.rnn_cell import BasicRNNCell
 
 from biomedical_qa.models.attention import dot_co_attention
 from biomedical_qa.models.qa_model import ExtractionQAModel
-from biomedical_qa.models.beam_search import BeamSearchDecoder
 from biomedical_qa.models.rnn_cell import _highway_maxout_network
 from biomedical_qa import tfutil
 import numpy as np
@@ -45,7 +44,6 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            self._beam_size = tf.get_variable("beam_size", initializer=1, trainable=False)
             self.paragraph2question = tf.placeholder(tf.int64, [None], "paragraph2question")
 
             n_contexts = tf.shape(self.embedded_context)[0]
@@ -97,7 +95,7 @@ class QAPointerModel(ExtractionQAModel):
 
                 with tf.variable_scope("pointer_layer"):
                     if self._answer_layer_type == "spn":
-                        self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
+                        self._start_scores, self._start_pointer, self.start_probs, self._end_scores, self._end_pointer, self.end_probs = \
                             self._spn_answer_layer(self.question_representation, self.matched_output)
                     else:
                         raise ValueError("Unknown answer layer type: %s" % self._answer_layer_type)
@@ -153,32 +151,6 @@ class QAPointerModel(ExtractionQAModel):
 
     def _spn_answer_layer(self, question_state, context_states):
 
-        # Apply beam search only during evaluation
-        beam_size = tf.cond(self._eval,
-                            lambda: self._beam_size,
-                            lambda: tf.constant(1))
-
-        # During evaluation, we'll do the same for each answer
-        answer_context_indices = tf.cond(self._eval,
-                                         lambda: tf.cast(tf.range(tf.shape(context_states)[0]), tf.int64),
-                                         lambda: self.answer_context_indices)
-
-        start_scores, end_scores, starts, ends = self._spn_answer_layer_impl(
-            question_state, context_states, answer_context_indices, beam_size)
-
-        # Expand Evaluation results to match answer_context_indices
-        def expand_if_eval(tensor):
-            return tf.cond(self._eval,
-                           lambda: tf.gather(tensor, self.answer_context_indices),
-                           lambda: tensor)
-
-        return [expand_if_eval(x) for x in [start_scores, end_scores, starts, ends]]
-
-    def _spn_answer_layer_impl(self, question_state, context_states,
-                               answer_context_indices, beam_size):
-
-        beam_search_decoder = BeamSearchDecoder(beam_size, answer_context_indices)
-
         context_states = tf.nn.dropout(context_states, self.keep_prob)
         context_shape = tf.shape(context_states)
         input_size = context_states.get_shape()[-1].value
@@ -199,24 +171,25 @@ class QAPointerModel(ExtractionQAModel):
         with tf.variable_scope("start"):
             start_scores = hmn(question_state, context_states,
                                self.context_length)
+            # TODO: Handle new format
+            starts = tfutil.segment_argmax(start_scores, self.paragraph2question)
+            start_probs = tfutil.segment_softmax(start_scores, self.paragraph2question)
 
-        predicted_start_pointer = beam_search_decoder.receive_start_scores(start_scores)
+        # From now on, answer_context_indices and correct_start_pointer need to be fed.
+        # There will be an end pointer prediction for each start pointer.
+        question_state = tf.gather(question_state, self.answer_context_indices)
+        context_states = tf.gather(context_states, self.answer_context_indices)
+        offsets = tf.gather(offsets, self.answer_context_indices)
+        context_lengths = tf.gather(self.context_length, self.answer_context_indices)
 
-        partition = beam_search_decoder.expand_batch(answer_context_indices)
-        question_state = tf.gather(question_state, partition)
-        context_states = tf.gather(context_states, partition)
-        offsets = tf.gather(offsets, partition)
-        context_lengths = tf.gather(self.context_length, partition)
-
-        start_pointer = tf.cond(self._eval,
-                                lambda: predicted_start_pointer,
-                                lambda: beam_search_decoder.expand_batch(
-                                    self.correct_start_pointer))
+        start_pointer = self.correct_start_pointer
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
         with tf.variable_scope("end"):
             end_input = tf.concat(1, [u_s, question_state])
             end_scores = hmn(end_input, context_states, context_lengths)
+            ends = tf.argmax(end_scores, axis=1)
+            end_probs = tf.nn.softmax(end_scores)
 
         # Mask end scores for evaluation
         masked_end_scores = end_scores + tfutil.mask_for_lengths(
@@ -228,11 +201,7 @@ class QAPointerModel(ExtractionQAModel):
                              lambda: masked_end_scores,
                              lambda: end_scores)
 
-        beam_search_decoder.receive_end_scores(end_scores)
-
-        self.top_starts, self.top_ends, self.top_probs = beam_search_decoder.get_top_spans()
-
-        return beam_search_decoder.get_final_prediction()
+        return start_scores, starts, start_probs, end_scores, ends, end_probs
 
     def set_eval(self, sess):
         super().set_eval(sess)
@@ -241,10 +210,6 @@ class QAPointerModel(ExtractionQAModel):
     def set_train(self, sess):
         super().set_train(sess)
         sess.run(self._set_train)
-
-    def set_beam_size(self, sess, beam_size):
-        assign_op = self._beam_size.assign(beam_size)
-        sess.run([assign_op])
 
     @property
     def end_scores(self):
