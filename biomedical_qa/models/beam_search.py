@@ -62,30 +62,30 @@ class BeamSearchDecoder(object):
         for row, col in enumerate(top_start_indices_per_context):
             partition = context_partition[row]
             if start_probs[row, col] > top_start_probs_per_partition[partition]:
-                top_start_probs_per_partition = start_probs[row, col]
-                top_start_row_indices_per_partition = row
-                top_start_col_indices_per_partition = col
+                top_start_probs_per_partition[partition] = start_probs[row, col]
+                top_start_row_indices_per_partition[partition] = row
+                top_start_col_indices_per_partition[partition] = col
 
         # Compute end probs by feeding all necessary itermediate results & start pointers
-        end_probs = self._sess.run(
-                [self._model.end_probs],
-                {
-                    # Starts
-                    self._model.correct_start_pointer: top_start_col_indices_per_partition,
-                    self._model.answer_context_indices: top_start_row_indices_per_partition,
-                    # Intermediate Results (so no recomputation needed)
-                    self._model.matched_output: matched_output,
-                    self._model.question_representation: question_representation,
-                })
+        feed_dict = self._model.get_feed_dict(qa_settings)
+        feed_dict.update({
+            # Starts
+            self._model.correct_start_pointer: top_start_col_indices_per_partition,
+            self._model.answer_context_indices: top_start_row_indices_per_partition,
+            # Intermediate Results (so no recomputation needed)
+            self._model.matched_output: matched_output,
+            self._model.question_representation: question_representation,
+        })
+        [end_probs] = self._sess.run([self._model.end_probs], feed_dict)
 
-        row_indices_per_question = [0] + np.cumsum([len(s.contexts) for s in qa_settings])[:-1]
+        row_indices_per_question = [0] + list(np.cumsum([len(s.contexts) for s in qa_settings]))[:-1]
         context_indices = [row_index - start_row_index
                            for row_index, start_row_index
                            in zip(top_start_row_indices_per_partition,
                                   row_indices_per_question)]
         ends = np.argmax(end_probs, axis=1)
         starts = top_start_col_indices_per_partition
-        assert len(ends) == num_partitions
+        assert len(context_indices) == len(starts) == len(ends) == num_partitions
 
         return [BeamSearchDecoderResult(context_indices=[context_indices[i]],
                                         starts=[starts[i]],

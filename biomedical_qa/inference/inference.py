@@ -57,15 +57,15 @@ class Inferrer(object):
 
             batch = sampler.get_batch()
 
-            predictions = self.beam_search_decoder.decode(batch)
+            network_predictions = self.beam_search_decoder.decode(batch)
 
             for i, question in enumerate(batch):
                 contexts = question.paragraph_json["contexts_original_capitalization"]
 
-                answers, answer_probs = self.extract_answers(contexts, predictions[i],
+                answers, answer_probs = self.extract_answers(contexts, network_predictions[i],
                                                              sampler.char_offsets[question.id])
                 predictions[question.id] = InferenceResult(
-                    predictions[i], answers, answer_probs, question)
+                    network_predictions[i], answers, answer_probs, question)
 
         return predictions
 

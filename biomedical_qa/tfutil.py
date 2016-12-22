@@ -162,6 +162,9 @@ def segment_argmax(input, partition):
             row_selected = tf.reduce_any(is_max, axis=1)
             row_indices = tf.squeeze(tf.where(row_selected))
 
+            # Ensure row_indices is always 1D
+            row_indices = tf.reshape(row_indices, [-1])
+
             selected_rows_is_max = tf.gather(is_max, row_indices)
             col_indices = tf.argmax(tf.cast(selected_rows_is_max, tf.int64), axis=1)
 
