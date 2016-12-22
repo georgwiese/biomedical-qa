@@ -46,11 +46,9 @@ class QAPointerModel(ExtractionQAModel):
 
             self.paragraph2question = tf.placeholder(tf.int64, [None], "paragraph2question")
 
-            n_contexts = tf.shape(self.embedded_context)[0]
-
-            # Fed during Training
-            self.correct_start_pointer = - tf.ones([n_contexts], tf.int64) # Dummy value
-            self.answer_context_indices = tf.cast(tf.range(0, n_contexts), dtype=tf.int64)
+            # Fed during Training & end pointer prediction
+            self.correct_start_pointer = tf.placeholder(tf.int64, [None])
+            self.answer_context_indices = tf.placeholder(tf.int64, [None])
 
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
@@ -95,7 +93,8 @@ class QAPointerModel(ExtractionQAModel):
 
                 with tf.variable_scope("pointer_layer"):
                     if self._answer_layer_type == "spn":
-                        self._start_scores, self._start_pointer, self.start_probs, self._end_scores, self._end_pointer, self.end_probs = \
+                        self._start_scores, self._start_pointer, self.start_probs, \
+                        self._end_scores, self._end_pointer, self.end_probs = \
                             self._spn_answer_layer(self.question_representation, self.matched_output)
                     else:
                         raise ValueError("Unknown answer layer type: %s" % self._answer_layer_type)

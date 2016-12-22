@@ -142,7 +142,6 @@ class ExtractionQATrainer(Trainer):
                 filtered_qa_settings.append(qa_setting)
 
         feed_dict = self.model.get_feed_dict(filtered_qa_settings)
-        # TODO: Feed correct answer context indices
         feed_dict[self.model.correct_start_pointer] = answer_starts
         feed_dict[self.model.answer_context_indices] = answer_context_indices
         feed_dict[self.answer_starts] = answer_starts
