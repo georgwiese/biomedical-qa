@@ -70,6 +70,7 @@ class QAPointerModel(ExtractionQAModel):
                     # Multiply question features for each paragraph
                     self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
                     self.question_representation = tf.gather(self.question_representation, self.context_partition)
+                    self.question_length = tf.gather(self.question_length, self.context_partition)
 
                     self.encoded_ctxt = self._preprocessing_layer(
                         cell_constructor, self.embedded_context, self.context_length,
@@ -174,6 +175,7 @@ class QAPointerModel(ExtractionQAModel):
 
         # From now on, answer_context_indices and correct_start_pointer need to be fed.
         # There will be an end pointer prediction for each start pointer.
+        starts = tf.gather(starts, self.context_partition)
         starts = tf.gather(starts, self.answer_context_indices)
         question_state = tf.gather(question_state, self.answer_context_indices)
         context_states = tf.gather(context_states, self.answer_context_indices)
