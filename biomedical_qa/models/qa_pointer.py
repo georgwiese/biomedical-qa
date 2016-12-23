@@ -174,12 +174,16 @@ class QAPointerModel(ExtractionQAModel):
 
         # From now on, answer_context_indices and correct_start_pointer need to be fed.
         # There will be an end pointer prediction for each start pointer.
+        starts = tf.gather(starts, self.answer_context_indices)
         question_state = tf.gather(question_state, self.answer_context_indices)
         context_states = tf.gather(context_states, self.answer_context_indices)
         offsets = tf.gather(offsets, self.answer_context_indices)
         context_lengths = tf.gather(self.context_length, self.answer_context_indices)
 
-        start_pointer = self.correct_start_pointer
+        self._eval = tf.Print(self._eval, [self._eval], message="Eval")
+        start_pointer = tf.cond(self._eval,
+                                lambda: starts,
+                                lambda: self.correct_start_pointer)
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
         with tf.variable_scope("end"):

@@ -69,8 +69,10 @@ class BeamSearchDecoder(object):
         # Compute end probs by feeding all necessary itermediate results & start pointers
         feed_dict = self._model.get_feed_dict(qa_settings)
         feed_dict.update({
+            # TODO: Find out why I need to feed this:
+            self._model.correct_start_pointer: [-1],
             # Starts
-            self._model.correct_start_pointer: top_start_col_indices_per_partition,
+            self._model.predicted_answer_starts: top_start_col_indices_per_partition,
             self._model.answer_context_indices: top_start_row_indices_per_partition,
             # Intermediate Results (so no recomputation needed)
             self._model.matched_output: matched_output,

@@ -36,8 +36,8 @@ class ExtractionQATrainer(Trainer):
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
         context_indices = tf.gather(model.predicted_context_indices, self.answer_partition)
-        start_pointer = tf.gather(model.predicted_answer_starts, self.answer_partition)
-        end_pointer = tf.gather(model.predicted_answer_ends, self.answer_partition)
+        start_pointer = model.predicted_answer_starts
+        end_pointer = model.predicted_answer_ends
 
         missed_from_start = tf.cast(start_pointer - self.answer_starts, tf.int32)
         missed_from_end = tf.cast(self.answer_ends - end_pointer, tf.int32)
