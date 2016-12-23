@@ -17,6 +17,7 @@ from biomedical_qa.util import load_vocab
 
 # data loading specifics
 tf.app.flags.DEFINE_string('data', None, 'Directory containing dataset files.')
+tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts on newline.')
 tf.app.flags.DEFINE_string("trainset_prefix", "train", "Prefix of training files.")
 tf.app.flags.DEFINE_string("validset_prefix", "valid", "Prefix of validation files.")
 tf.app.flags.DEFINE_string("testset_prefix", "test", "Prefix of test files.")
@@ -97,7 +98,8 @@ with tf.Session(config=config) as sess:
     train_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.trainset_prefix)]
     random.shuffle(train_fns)
     print("Training sets (first 100): ", train_fns[:100])
-    sampler = SQuADSampler(FLAGS.data, train_fns, FLAGS.batch_size, vocab, FLAGS.max_instances)
+    sampler = SQuADSampler(FLAGS.data, train_fns, FLAGS.batch_size, vocab, FLAGS.max_instances,
+                           split_contexts_on_newline=FLAGS.split_contexts)
 
     valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
     print("Valid sets: (first 100)", valid_fns[:100])
