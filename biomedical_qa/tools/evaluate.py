@@ -10,6 +10,7 @@ from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 
 tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file.')
+tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts on newline.')
 tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
 tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
@@ -137,7 +138,8 @@ def main():
     instances = FLAGS.subsample if FLAGS.subsample > 0 else None
     sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
                            inferrer.model.embedder.vocab,
-                           instances_per_epoch=instances, shuffle=False)
+                           instances_per_epoch=instances, shuffle=False,
+                           split_contexts_on_newline=FLAGS.split_contexts)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")

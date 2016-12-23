@@ -150,7 +150,7 @@ class BioAsqSquadBuilder(object):
         self._stats["max_context_length"] = max(self._stats["max_context_length"],
                                                 num_tokens)
 
-        return " ".join(filtered_snippets)
+        return "\n".join(filtered_snippets)
 
 
     def get_extractive_answers(self, question, context):

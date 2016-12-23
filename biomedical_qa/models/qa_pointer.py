@@ -180,7 +180,6 @@ class QAPointerModel(ExtractionQAModel):
         offsets = tf.gather(offsets, self.answer_context_indices)
         context_lengths = tf.gather(self.context_length, self.answer_context_indices)
 
-        self._eval = tf.Print(self._eval, [self._eval], message="Eval")
         start_pointer = tf.cond(self._eval,
                                 lambda: starts,
                                 lambda: self.correct_start_pointer)
