@@ -147,29 +147,38 @@ def segment_argmax(input, partition):
 
         num_partitions = tf.reduce_max(partition) + 1
 
-        max_per_partition = tf.segment_max(tf.reduce_max(input, axis=1), partition)
-        is_max = tf.equal(input, tf.expand_dims(tf.gather(max_per_partition, partition), 1))
+        def segment_is_max(i, p):
+            max_per_partition = tf.segment_max(tf.reduce_max(i, axis=1), p)
+            return tf.equal(i, tf.expand_dims(tf.gather(max_per_partition, p), 1))
 
-        is_max_count = tf.reduce_sum(tf.cast(is_max, tf.int64))
-        assert_op = tf.assert_equal(num_partitions, is_max_count,
-                                    message="Current segment_max() implementation "
-                                            "assumes that only one element is equal "
-                                            "to the maximum.")
+        is_max = segment_is_max(input, partition)
 
-        with tf.control_dependencies([assert_op]):
+        # The current is_max could still contain multiple True entries per
+        # partition. As long as they are in the same row, that is not a problem.
+        # However, we do need to remove duplicate Trues in the same partition
+        # in multiple rows.
+        # For that, we'll multiply is_max with the row indices + 1 and perform
+        # segment_is_max() again.
 
-            # Get selected rows and columns
-            row_selected = tf.reduce_any(is_max, axis=1)
-            row_indices = tf.squeeze(tf.where(row_selected))
+        rows = tf.shape(input)[0]
+        cols = tf.shape(input)[1]
+        row_indices = tf.tile(tf.expand_dims(tf.range(rows), 1), [1, cols])
+        is_max = segment_is_max(tf.cast(is_max, tf.int32) * (row_indices + 1), partition)
 
-            # Ensure row_indices is always 1D
+        # Get selected rows and columns
+        row_selected = tf.reduce_any(is_max, axis=1)
+        row_indices = tf.squeeze(tf.where(row_selected))
+        rows_selected = tf.reduce_sum(tf.cast(row_selected, tf.int64))
+
+        # Assert rows_selected is correct & ensure row_indices is always 1D
+        with tf.control_dependencies([tf.assert_equal(rows_selected, num_partitions)]):
             row_indices = tf.reshape(row_indices, [-1])
 
-            selected_rows_is_max = tf.gather(is_max, row_indices)
-            col_indices = tf.argmax(tf.cast(selected_rows_is_max, tf.int64), axis=1)
+        selected_rows_is_max = tf.gather(is_max, row_indices)
+        col_indices = tf.argmax(tf.cast(selected_rows_is_max, tf.int64), axis=1)
 
-            # Pack indices
-            return row_indices, col_indices
+        # Pack indices
+        return row_indices, col_indices
 
 
 def gather_rowwise_indices_1d(indices):
