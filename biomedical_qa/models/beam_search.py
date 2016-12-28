@@ -173,7 +173,7 @@ class BeamSearchDecoder(object):
                                     key=lambda v: -v[0])[:self._beam_size]
 
             # Unpack
-            rows[p], cols[p], top_values[p] = zip(*values_indices)
+            top_values[p], rows[p], cols[p] = zip(*values_indices)
 
         return rows, cols, top_values
 
