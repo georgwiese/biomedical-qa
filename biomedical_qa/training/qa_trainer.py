@@ -28,6 +28,10 @@ class ExtractionQATrainer(Trainer):
         correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
         correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
 
+        # Prevent NaN losses
+        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
+        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0) 
+
         loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
 
         loss = tf.segment_min(loss, self.answer_partition)
