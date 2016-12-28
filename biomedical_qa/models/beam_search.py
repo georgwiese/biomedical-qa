@@ -164,7 +164,7 @@ class BeamSearchDecoder(object):
             # Collect values
             current_values = values[partition == p]
             n_rows, n_cols = current_values.shape
-            values_indices = [(values[row, col], row, col)
+            values_indices = [(current_values[row, col], row, col)
                               for row in range(n_rows)
                               for col in range(n_cols)]
 
