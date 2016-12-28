@@ -28,6 +28,10 @@ class ExtractionQATrainer(Trainer):
         correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
         correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
 
+        # Prevent NaN losses
+        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
+        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0) 
+
         loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
 
         loss = tf.segment_min(loss, self.answer_partition)
@@ -139,11 +143,12 @@ class ExtractionQATrainer(Trainer):
                 answer_starts.append(start)
                 answer_ends.append(end - 1)
                 answer_partition.append(k)
-            start_context_index += len(qa_setting.contexts)
 
+            # Filter Question entirely if there are no answers
             if answer_partition and answer_partition[-1] == k:
                 k += 1
                 filtered_qa_settings.append(qa_setting)
+                start_context_index += len(qa_setting.contexts)
 
         feed_dict = self.model.get_feed_dict(filtered_qa_settings)
         feed_dict[self.model.correct_start_pointer] = answer_starts
