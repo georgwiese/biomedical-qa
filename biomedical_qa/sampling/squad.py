@@ -54,14 +54,6 @@ class SQuADSampler(BaseSampler):
 
                 for qa in paragraph["qas"]:
 
-                    # Maybe split context_original_capitalization
-                    if "context_original_capitalization" in paragraph:
-
-                        context_str_all = paragraph["context_original_capitalization"]
-                        context_strs = context_str_all.split("\n") \
-                            if self.split_contexts_on_newline else [context_str_all]
-                        paragraph["contexts_original_capitalization"] = context_strs
-
                     answers = []
                     answer_spans = []
                     answers_json = qa["answers"] if "answers" in qa else []
