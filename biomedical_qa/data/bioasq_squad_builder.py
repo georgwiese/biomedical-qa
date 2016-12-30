@@ -9,13 +9,12 @@ class BioAsqSquadBuilder(object):
 
 
     def __init__(self, bioasq_json, context_token_limit=-1,
-                 include_answers=True, types=None, include_synonyms=False):
+                 types=None, include_synonyms=False):
         """
         Creates the BioAsqSquadBuilder.
         :param bioasq_json: The BioASQ JSON object.
         :param context_token_limit: If larger than 0, contexts will only be
                 added as long as the token limit is not exceeded.
-        :param include_answers: Whether answer objects should be included.
         :param types: Question types to include
         :param include_synonyms: If True, the answers object is a list of lists
                 (which is NOT the SQuAD format) with the outer list containing
@@ -31,7 +30,6 @@ class BioAsqSquadBuilder(object):
 
         self._tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
         self._context_token_limit = context_token_limit
-        self._include_answers = include_answers
         self._include_synonyms = include_synonyms
         self._paragraphs = None
         self._stats = {
@@ -46,7 +44,7 @@ class BioAsqSquadBuilder(object):
         return self._paragraphs
 
 
-    def get_reult_object(self, name):
+    def get_result_object(self, name="BioASQ"):
 
         return self.build_result_object(name, self._paragraphs)
 
@@ -118,7 +116,7 @@ class BioAsqSquadBuilder(object):
             ]
         }
 
-        if self._include_answers:
+        if "exact_answer" in question:
 
             if question["type"] in ["factoid", "list"]:
                 answers = self.get_extractive_answers(question, context)
