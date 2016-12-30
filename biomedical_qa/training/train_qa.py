@@ -103,7 +103,8 @@ with tf.Session(config=config) as sess:
 
     valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
     print("Valid sets: (first 100)", valid_fns[:100])
-    valid_sampler = SQuADSampler(FLAGS.data, valid_fns, FLAGS.batch_size, vocab, FLAGS.max_instances)
+    valid_sampler = SQuADSampler(FLAGS.data, valid_fns, FLAGS.batch_size, vocab, FLAGS.max_instances,
+                                 split_contexts_on_newline=FLAGS.split_contexts)
     test_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.testset_prefix)]
     if test_fns:
         print("Test sets: (first 100)", test_fns[:100])
