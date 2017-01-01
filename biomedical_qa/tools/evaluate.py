@@ -34,26 +34,16 @@ FLAGS = tf.app.flags.FLAGS
 
 
 def bioasq_evaluation(sampler, inferrer):
-    with open(FLAGS.eval_data) as f:
-        data = json.load(f)
-        if FLAGS.is_bioasq:
-            data = BioAsqSquadBuilder(data).build().get_result_object()
-        paragraphs = data["data"][0]["paragraphs"]
-
-    assert paragraphs[0]["qas"][0]["original_answers"] is not None, \
-        "Questions must be augmented with original_answers to perform BioASQ evaluation."
-    assert paragraphs[0]["qas"][0]["question_type"] is not None, \
-        "Questions must be augmented with question_type to perform BioASQ evaluation."
 
     if FLAGS.beam_size < 5:
         logging.warning("Beam size should be at least 5 in order to get 5 ranked answers.")
 
+    questions = sampler.get_questions()
+
     # Assuming one question per paragraph
-    count = len(paragraphs)
+    count = len(questions)
     print("  (Questions: %d, using %d)" %
           (count, FLAGS.subsample if FLAGS.subsample > 0 else count))
-    if FLAGS.subsample > 0:
-        paragraphs = paragraphs[:FLAGS.subsample]
 
     factoid_correct, factoid_total = 0, 0
     factoid_reciprocal_rank_sum = 0
@@ -62,22 +52,18 @@ def bioasq_evaluation(sampler, inferrer):
     print("  Doing predictions...")
     predictions = inferrer.get_predictions(sampler)
 
-    for paragraph in paragraphs:
+    for question in questions:
 
-        question = paragraph["qas"][0]
-        prediction = predictions[question["id"]]
+        prediction = predictions[question.id]
 
-        correct_answers = question["original_answers"]
-        question_type = question["question_type"]
-
-        if isinstance(correct_answers[0], str):
-            correct_answers = [correct_answers]
+        correct_answers = question.question_json["original_answers"]
+        question_type = question.q_type
 
         answers = prediction.answer_strings[:5]
 
         if FLAGS.verbose:
             print("-------------")
-            print("  ID:", question["id"])
+            print("  ID:", question.id)
             print("  Given: ", answers)
             print("  Correct: ", correct_answers)
 
