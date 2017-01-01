@@ -57,7 +57,8 @@ class SQuADSampler(BaseSampler):
                     answers = []
                     answer_spans = []
                     answers_json = qa["answers"] if "answers" in qa else []
-                    answers_json_list = answers_json if isinstance(answers_json[0], list) \
+                    answers_json_list = answers_json if len(answers_json) == 0  \
+                                                     or isinstance(answers_json[0], list) \
                                                      else [answers_json]
                     for answer_list in answers_json_list:
                         current_answer_spans = []
