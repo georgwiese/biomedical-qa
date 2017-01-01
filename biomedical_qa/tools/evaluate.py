@@ -5,7 +5,8 @@ import sys
 import numpy as np
 import tensorflow as tf
 
-from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
+from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder, \
+    ensure_list_depth_2
 from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
@@ -57,6 +58,7 @@ def bioasq_evaluation(sampler, inferrer):
         prediction = predictions[question.id]
 
         correct_answers = question.question_json["original_answers"]
+        correct_answers = ensure_list_depth_2(correct_answers)
         question_type = question.q_type
 
         answers = prediction.answer_strings[:5]

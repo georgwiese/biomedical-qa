@@ -4,6 +4,30 @@ import re
 from nltk import RegexpTokenizer
 
 
+
+def ensure_list_depth_2(l):
+
+    max_depth = max_list_depth(l)
+
+    if max_depth == 1:
+        return [l]
+    elif max_depth == 2:
+        return l
+    else:
+        raise ValueError("Unexpected list depth: %d (%s)" %
+                         (max_depth, str(l)))
+
+
+def max_list_depth(l):
+
+    if not isinstance(l, str):
+        item_depths = [max_list_depth(x) for x in l]
+        if min(item_depths) != max(item_depths):
+            logging.warning("Inconsistent answer list: %s" % str(l))
+        return max(item_depths) + 1
+    return 0
+
+
 class BioAsqSquadBuilder(object):
     """Converts BioASQ JSON objects to (enriched) SQuAD JSON objects."""
 
@@ -177,7 +201,7 @@ class BioAsqSquadBuilder(object):
 
             return answers[0]
 
-        answers = self.ensure_list_depth_2(question["exact_answer"])
+        answers = ensure_list_depth_2(question["exact_answer"])
 
         assert len(answers)
 
@@ -220,29 +244,6 @@ class BioAsqSquadBuilder(object):
             return None
 
         return answer_objects
-
-
-    def ensure_list_depth_2(self, l):
-
-        max_depth = self.max_list_depth(l)
-
-        if max_depth == 1:
-            return [l]
-        elif max_depth == 2:
-            return l
-        else:
-            raise ValueError("Unexpected list depth: %d (%s)" %
-                             (max_depth, str(l)))
-
-
-    def max_list_depth(self, l):
-
-        if not isinstance(l, str):
-            item_depths = [self.max_list_depth(x) for x in l]
-            if min(item_depths) != max(item_depths):
-                logging.warning("Inconsistent answer list: %s" % str(l))
-            return max(item_depths) + 1
-        return 0
 
 
     def clean_answer(self, answer):
