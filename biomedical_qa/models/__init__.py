@@ -61,5 +61,8 @@ def model_from_config(config, devices=None, dropout=0.0, inputs=None, seq_length
                                                    reuse=reuse)
     elif type == "pointer":
         return QAPointerModel.create_from_config(config, devices, dropout)
+    elif type == "simple_pointer":
+        from genie_qa.models.qa_pointer import QASimplePointerModel
+        return QASimplePointerModel.create_from_config(config, devices, dropout)
     else:
-        raise NotImplementedError("")
+        raise NotImplementedError("Unknown model type: %s" % type)
