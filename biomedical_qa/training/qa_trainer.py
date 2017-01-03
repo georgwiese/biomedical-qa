@@ -112,7 +112,7 @@ class ExtractionQATrainer(Trainer):
     def softmax_start_loss(self, model):
 
         start_probs = tf.gather(model.start_probs, model.answer_context_indices)
-        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
+        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, tf.cast(self.answer_starts, tf.int64))
 
         # Prevent NaN losses
         correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
