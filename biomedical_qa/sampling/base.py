@@ -59,3 +59,8 @@ class BaseSampler:
 
     def reset(self):
         self._idx = 0
+
+
+    def get_questions(self):
+
+        return self._qas

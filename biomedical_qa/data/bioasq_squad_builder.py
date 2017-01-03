@@ -4,12 +4,48 @@ import re
 from nltk import RegexpTokenizer
 
 
+
+def ensure_list_depth_2(l):
+
+    max_depth = max_list_depth(l)
+
+    if max_depth == 1:
+        return [l]
+    elif max_depth == 2:
+        return l
+    else:
+        raise ValueError("Unexpected list depth: %d (%s)" %
+                         (max_depth, str(l)))
+
+
+def max_list_depth(l):
+
+    if not isinstance(l, str):
+        item_depths = [max_list_depth(x) for x in l]
+        if min(item_depths) != max(item_depths):
+            logging.warning("Inconsistent answer list: %s" % str(l))
+        return max(item_depths) + 1
+    return 0
+
+
 class BioAsqSquadBuilder(object):
     """Converts BioASQ JSON objects to (enriched) SQuAD JSON objects."""
 
 
     def __init__(self, bioasq_json, context_token_limit=-1,
-                 include_answers=True, types=None):
+                 types=None, include_synonyms=False):
+        """
+        Creates the BioAsqSquadBuilder.
+        :param bioasq_json: The BioASQ JSON object.
+        :param context_token_limit: If larger than 0, contexts will only be
+                added as long as the token limit is not exceeded.
+        :param types: Question types to include
+        :param include_synonyms: If True, the answers object is a list of lists
+                (which is NOT the SQuAD format) with the outer list containing
+                the answers (i.e., correct answers of the list question) and
+                inner list containing the synonyms. If False, the answers object
+                is a flat list and only one synonym is included.
+        """
 
         self._bioasq_json = bioasq_json
         self._types = types
@@ -18,7 +54,7 @@ class BioAsqSquadBuilder(object):
 
         self._tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
         self._context_token_limit = context_token_limit
-        self._include_answers = include_answers
+        self._include_synonyms = include_synonyms
         self._paragraphs = None
         self._stats = {
             "contexts_truncated": 0,
@@ -32,7 +68,7 @@ class BioAsqSquadBuilder(object):
         return self._paragraphs
 
 
-    def get_reult_object(self, name):
+    def get_result_object(self, name="BioASQ"):
 
         return self.build_result_object(name, self._paragraphs)
 
@@ -104,7 +140,7 @@ class BioAsqSquadBuilder(object):
             ]
         }
 
-        if self._include_answers:
+        if "exact_answer" in question:
 
             if question["type"] in ["factoid", "list"]:
                 answers = self.get_extractive_answers(question, context)
@@ -157,7 +193,7 @@ class BioAsqSquadBuilder(object):
 
         context = context.lower()
 
-        def find_best_answer(answers):
+        def find_best_synonym(answers):
 
             for answer in answers:
                 if answer.lower() in context and len(answer):
@@ -165,8 +201,7 @@ class BioAsqSquadBuilder(object):
 
             return answers[0]
 
-        answers = [a if isinstance(a, str) else find_best_answer(a)
-                   for a in question["exact_answer"]]
+        answers = ensure_list_depth_2(question["exact_answer"])
 
         assert len(answers)
 
@@ -174,15 +209,33 @@ class BioAsqSquadBuilder(object):
 
         for answer in answers:
 
-            answer = self.clean_answer(answer)
+            if not self._include_synonyms:
+                # Just use one synonym
+                answer = [find_best_synonym(answer)]
 
-            for start_position in self.find_all_substring_positions(context, answer):
-                answer_objects += [
-                    {
-                        "answer_start": start_position,
-                        "text": answer
-                    }
-                ]
+            answer_object_list = []
+
+            for synonym in answer:
+
+                synonym = self.clean_answer(synonym)
+
+                for start_position in self.find_all_substring_positions(context, synonym):
+                    answer_object_list += [
+                        {
+                            "answer_start": start_position,
+                            "text": synonym
+                        }
+                    ]
+
+            if len(answer_object_list) == 0:
+                continue
+
+            if self._include_synonyms:
+                # Add a list of answer objects
+                answer_objects.append(answer_object_list)
+            else:
+                # Just add the answer objects to a flat list:
+                answer_objects += answer_object_list
 
         if not len(answer_objects):
             # Skip question

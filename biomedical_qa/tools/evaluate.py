@@ -5,7 +5,10 @@ import sys
 import numpy as np
 import tensorflow as tf
 
+from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder, \
+    ensure_list_depth_2
 from biomedical_qa.inference.inference import Inferrer
+from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 
@@ -14,6 +17,10 @@ tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts 
 tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
 tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
+
+tf.app.flags.DEFINE_boolean("is_bioasq", False, "Whether the provided dataset is a BioASQ json.")
+tf.app.flags.DEFINE_boolean("bioasq_include_synonyms", False, "Whether BioASQ synonyms should be included.")
+tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for BioASQ contexts.")
 
 tf.app.flags.DEFINE_integer("batch_size", 32, "Number of examples in each batch.")
 tf.app.flags.DEFINE_integer("subsample", -1, "Number of samples to do the evaluation on.")
@@ -28,23 +35,16 @@ FLAGS = tf.app.flags.FLAGS
 
 
 def bioasq_evaluation(sampler, inferrer):
-    with open(FLAGS.eval_data) as f:
-        paragraphs = json.load(f)["data"][0]["paragraphs"]
-
-    assert paragraphs[0]["qas"][0]["original_answers"] is not None, \
-        "Questions must be augmented with original_answers to perform BioASQ evaluation."
-    assert paragraphs[0]["qas"][0]["question_type"] is not None, \
-        "Questions must be augmented with question_type to perform BioASQ evaluation."
 
     if FLAGS.beam_size < 5:
         logging.warning("Beam size should be at least 5 in order to get 5 ranked answers.")
 
+    questions = sampler.get_questions()
+
     # Assuming one question per paragraph
-    count = len(paragraphs)
+    count = len(questions)
     print("  (Questions: %d, using %d)" %
           (count, FLAGS.subsample if FLAGS.subsample > 0 else count))
-    if FLAGS.subsample > 0:
-        paragraphs = paragraphs[:FLAGS.subsample]
 
     factoid_correct, factoid_total = 0, 0
     factoid_reciprocal_rank_sum = 0
@@ -53,22 +53,19 @@ def bioasq_evaluation(sampler, inferrer):
     print("  Doing predictions...")
     predictions = inferrer.get_predictions(sampler)
 
-    for paragraph in paragraphs:
+    for question in questions:
 
-        question = paragraph["qas"][0]
-        prediction = predictions[question["id"]]
+        prediction = predictions[question.id]
 
-        correct_answers = question["original_answers"]
-        question_type = question["question_type"]
-
-        if isinstance(correct_answers[0], str):
-            correct_answers = [correct_answers]
+        correct_answers = question.question_json["original_answers"]
+        correct_answers = ensure_list_depth_2(correct_answers)
+        question_type = question.q_type
 
         answers = prediction.answer_strings[:5]
 
         if FLAGS.verbose:
             print("-------------")
-            print("  ID:", question["id"])
+            print("  ID:", question.id)
             print("  Given: ", answers)
             print("  Correct: ", correct_answers)
 
@@ -136,10 +133,18 @@ def main():
     data_dir = os.path.dirname(FLAGS.eval_data)
     data_filename = os.path.basename(FLAGS.eval_data)
     instances = FLAGS.subsample if FLAGS.subsample > 0 else None
-    sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
-                           inferrer.model.embedder.vocab,
-                           instances_per_epoch=instances, shuffle=False,
-                           split_contexts_on_newline=FLAGS.split_contexts)
+    if not FLAGS.is_bioasq:
+        sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
+                               inferrer.model.embedder.vocab,
+                               instances_per_epoch=instances, shuffle=False,
+                               split_contexts_on_newline=FLAGS.split_contexts)
+    else:
+        sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
+                                inferrer.model.embedder.vocab,
+                                instances_per_epoch=instances, shuffle=False,
+                                split_contexts_on_newline=FLAGS.split_contexts,
+                                context_token_limit=FLAGS.bioasq_context_token_limit,
+                                include_synonyms=FLAGS.bioasq_include_synonyms)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")

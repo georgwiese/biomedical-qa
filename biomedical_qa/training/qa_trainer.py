@@ -18,7 +18,15 @@ class ExtractionQATrainer(Trainer):
     def _init(self):
         self.answer_starts = tf.placeholder(tf.int64, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int64, shape=[None], name="answer_end")
+
+        # Maps each answer alternative index to a question index
+        self.question_partition = tf.placeholder(tf.int64, shape=[None], name="question_partition")
+        # Maps each answer alternative index to a answer index
         self.answer_partition = tf.placeholder(tf.int64, shape=[None], name="answer_partition")
+
+        # Maps each answer index to a question index. Works because within one
+        # answer partition, all question IDs should be the same.
+        answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
 
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
@@ -30,16 +38,19 @@ class ExtractionQATrainer(Trainer):
 
         # Prevent NaN losses
         correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
-        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0) 
+        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0)
 
         loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
 
+        # Get any of the alternatives right
         loss = tf.segment_min(loss, self.answer_partition)
+        # Get all of the answers right
+        loss = tf.segment_mean(loss, answer_question_partition)
         self._loss = tf.reduce_mean(loss)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
-        context_indices = tf.gather(model.predicted_context_indices, self.answer_partition)
+        context_indices = tf.gather(model.predicted_context_indices, self.question_partition)
         start_pointer = model.predicted_answer_starts
         end_pointer = model.predicted_answer_ends
 
@@ -60,14 +71,14 @@ class ExtractionQATrainer(Trainer):
                                   f1_per_answer,
                                   tf.zeros(tf.shape(f1_per_answer)))
 
-        self.f1 = tf.segment_max(f1_per_answer, self.answer_partition)
+        self.f1 = tf.segment_max(f1_per_answer, self.question_partition)
         self.mean_f1 = tf.reduce_mean(self.f1)
 
         pointers_equal = tf.logical_and(tf.equal(start_pointer, self.answer_starts),
                                         tf.equal(end_pointer, self.answer_ends))
         spans_equal = tf.logical_and(contexts_equal, pointers_equal)
         self.exact_matches = tf.segment_max(tf.cast(spans_equal, tf.int32),
-                                            self.answer_partition)
+                                            self.question_partition)
 
         if len(self._train_variable_prefixes):
             train_variables = [v for v in model.train_variables
@@ -131,22 +142,28 @@ class ExtractionQATrainer(Trainer):
         answer_context_indices = []
         answer_starts = []
         answer_ends = []
+        question_partition = []
         answer_partition = []
 
-        k = 0
+        question_index = 0
+        answer_index = 0
         filtered_qa_settings = list()
         start_context_index = 0
-        for i, qa_setting in enumerate(qa_settings):
-            for j, span in enumerate(qa_setting.answer_spans):
-                (context_index, start, end) = span
-                answer_context_indices.append(start_context_index + context_index)
-                answer_starts.append(start)
-                answer_ends.append(end - 1)
-                answer_partition.append(k)
+        for qa_setting in qa_settings:
+            for answer_spans in qa_setting.answers_spans:
+                for span in answer_spans:
+                    (context_index, start, end) = span
+                    answer_context_indices.append(start_context_index + context_index)
+                    answer_starts.append(start)
+                    answer_ends.append(end - 1)
+                    question_partition.append(question_index)
+                    answer_partition.append(answer_index)
+                if len(answer_spans):
+                    answer_index += 1
 
             # Filter Question entirely if there are no answers
-            if answer_partition and answer_partition[-1] == k:
-                k += 1
+            if question_partition and question_partition[-1] == question_index:
+                question_index += 1
                 filtered_qa_settings.append(qa_setting)
                 start_context_index += len(qa_setting.contexts)
 
@@ -155,6 +172,7 @@ class ExtractionQATrainer(Trainer):
         feed_dict[self.model.answer_context_indices] = answer_context_indices
         feed_dict[self.answer_starts] = answer_starts
         feed_dict[self.answer_ends] = answer_ends
+        feed_dict[self.question_partition] = question_partition
         feed_dict[self.answer_partition] = answer_partition
         # start weights are given when computing end-weights
         #if not is_eval:

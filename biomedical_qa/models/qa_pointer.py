@@ -190,8 +190,6 @@ class QAPointerModel(ExtractionQAModel):
         with tf.variable_scope("end"):
             end_input = tf.concat(1, [u_s, question_state])
             end_scores = hmn(end_input, context_states, context_lengths)
-            ends = tf.argmax(end_scores, axis=1)
-            end_probs = tf.nn.softmax(end_scores)
 
         # Mask end scores for evaluation
         masked_end_scores = end_scores + tfutil.mask_for_lengths(
@@ -202,6 +200,9 @@ class QAPointerModel(ExtractionQAModel):
         end_scores = tf.cond(self._eval,
                              lambda: masked_end_scores,
                              lambda: end_scores)
+        
+        ends = tf.argmax(end_scores, axis=1)
+        end_probs = tf.nn.softmax(end_scores)
 
         return contexts, start_scores, starts, start_probs, end_scores, ends, end_probs
 

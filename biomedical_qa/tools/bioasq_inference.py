@@ -25,9 +25,9 @@ def load_dataset(path):
     with open(path) as f:
         bioasq_json = json.load(f)
 
-    squad_json = BioAsqSquadBuilder(bioasq_json, include_answers=False) \
+    squad_json = BioAsqSquadBuilder(bioasq_json) \
                     .build() \
-                    .get_reult_object("BioASQ")
+                    .get_result_object()
 
     return bioasq_json, squad_json
 

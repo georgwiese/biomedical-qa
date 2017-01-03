@@ -10,6 +10,7 @@ import tensorflow as tf
 from biomedical_qa.models import model_from_config
 from biomedical_qa.models.embedder import CharWordEmbedder
 from biomedical_qa.models.qa_pointer import QAPointerModel
+from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
 
@@ -23,6 +24,11 @@ tf.app.flags.DEFINE_string("validset_prefix", "valid", "Prefix of validation fil
 tf.app.flags.DEFINE_string("testset_prefix", "test", "Prefix of test files.")
 tf.app.flags.DEFINE_string("dataset", "squad", "[wikireading,squad].")
 tf.app.flags.DEFINE_string("task", "qa", "qa, multiple_choice, question_generation")
+
+# BioASQ data loading
+tf.app.flags.DEFINE_boolean("is_bioasq", False, "Whether the provided dataset is a BioASQ json.")
+tf.app.flags.DEFINE_boolean("bioasq_include_synonyms", False, "Whether BioASQ synonyms should be included.")
+tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for BioASQ contexts.")
 
 # model
 tf.app.flags.DEFINE_integer("size", 150, "hidden size of model")
@@ -72,6 +78,28 @@ train_dir = FLAGS.save_dir
 config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
 
+
+def make_sampler(filenames, vocab):
+    args = {
+        "dir": FLAGS.data,
+        "filenames": filenames,
+        "batch_size": FLAGS.batch_size,
+        "vocab": vocab,
+        "instances_per_epoch": FLAGS.max_instances,
+        "split_contexts_on_newline": FLAGS.split_contexts,
+    }
+
+    if FLAGS.is_bioasq:
+        args.update({
+            "context_token_limit": FLAGS.bioasq_context_token_limit,
+            "include_synonyms": FLAGS.bioasq_include_synonyms,
+        })
+        return BioAsqSampler(**args)
+    else:
+        return SQuADSampler(**args)
+
+
+
 with tf.Session(config=config) as sess:
     devices = FLAGS.devices.split(",")
     train_variable_prefixes = FLAGS.train_variable_prefixes.split(",") \
@@ -98,13 +126,11 @@ with tf.Session(config=config) as sess:
     train_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.trainset_prefix)]
     random.shuffle(train_fns)
     print("Training sets (first 100): ", train_fns[:100])
-    sampler = SQuADSampler(FLAGS.data, train_fns, FLAGS.batch_size, vocab, FLAGS.max_instances,
-                           split_contexts_on_newline=FLAGS.split_contexts)
+    sampler = make_sampler(train_fns, vocab)
 
     valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
     print("Valid sets: (first 100)", valid_fns[:100])
-    valid_sampler = SQuADSampler(FLAGS.data, valid_fns, FLAGS.batch_size, vocab, FLAGS.max_instances,
-                                 split_contexts_on_newline=FLAGS.split_contexts)
+    valid_sampler = make_sampler(valid_fns, vocab)
     test_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.testset_prefix)]
     if test_fns:
         print("Test sets: (first 100)", test_fns[:100])

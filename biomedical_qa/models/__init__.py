@@ -7,7 +7,7 @@ from biomedical_qa.models.context_embedder import ContextEmbedder,RNNContextEmbe
 
 class QASetting:
     def __init__(self, question, answers, contexts,
-                 answer_spans=None,
+                 answers_spans=None,
                  answer_candidates=None,
                  answer_candidate_spans=None,
                  id=None,
@@ -17,15 +17,16 @@ class QASetting:
                  question_json=None):
         """
         :param question: list of indices
-        :param answers:  list of list of indices
+        :param answers:  list of list of list of indices:
+                         (answers -> alternatives -> token ids)
         :param contexts: list of list indices
-        :param answer_spans: list of (context_index, start, end) tuples
+        :param answer_spans: list of list of (context_index, start, end) tuples
         :return:
         """
         self.question = question
         self.answers = answers
         self.contexts = contexts
-        self.answer_spans = answer_spans
+        self.answers_spans = answers_spans
         self.answer_candidates = answer_candidates
         self.answer_candidate_spans = answer_candidate_spans
         self.id = id
@@ -60,5 +61,8 @@ def model_from_config(config, devices=None, dropout=0.0, inputs=None, seq_length
                                                    reuse=reuse)
     elif type == "pointer":
         return QAPointerModel.create_from_config(config, devices, dropout)
+    elif type == "simple_pointer":
+        from genie_qa.models.qa_pointer import QASimplePointerModel
+        return QASimplePointerModel.create_from_config(config, devices, dropout)
     else:
-        raise NotImplementedError("")
+        raise NotImplementedError("Unknown model type: %s" % type)
