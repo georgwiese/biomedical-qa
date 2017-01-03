@@ -8,6 +8,9 @@ from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import Trainer
 
 
+SIGMOID_NEGATIVE_SAMPLES = 2
+
+
 class ExtractionQATrainer(Trainer):
 
     def __init__(self, learning_rate, model, device, train_variable_prefixes=[],
@@ -35,11 +38,13 @@ class ExtractionQATrainer(Trainer):
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
 
         if self._start_output_unit == "softmax":
-            self._loss = self.softmax_loss(model)
+            start_loss = self.softmax_start_loss(model)
         elif self._start_output_unit == "sigmoid":
-            self._loss = self.sigmoid_loss(model)
+            start_loss = self.sigmoid_start_loss(model)
         else:
             raise ValueError("Unknown start output unit: %s" % self._start_output_unit)
+
+        self._loss = start_loss + self.end_loss(model)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -96,18 +101,7 @@ class ExtractionQATrainer(Trainer):
             tf.scalar_summary("train_f1_mean", self.mean_f1)
             tf.histogram_summary("train_f1", self.f1)
 
-    def softmax_loss(self, model):
-
-        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
-        end_probs = model.end_probs
-        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
-        correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
-
-        # Prevent NaN losses
-        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
-        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0)
-
-        loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
+    def reduce_per_answer_loss(self, loss):
 
         # Get any of the alternatives right
         loss = tf.segment_min(loss, self.answer_partition)
@@ -115,9 +109,53 @@ class ExtractionQATrainer(Trainer):
         loss = tf.segment_mean(loss, self.answer_question_partition)
         return tf.reduce_mean(loss)
 
-    def sigmoid_loss(self, model):
+    def softmax_start_loss(self, model):
 
-        raise NotImplementedError()
+        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
+        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
+
+        # Prevent NaN losses
+        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
+
+        start_loss = - tf.log(correct_start_probs)
+
+        return self.reduce_per_answer_loss(start_loss)
+
+    def sigmoid_start_loss(self, model):
+
+        correct_start_indices = tf.transpose(tf.pack(model.answer_context_indices,
+                                                     self.answer_starts))
+        correct_start_values = tf.ones([tf.shape(self.answer_starts)[0]], dtype=tf.bool)
+        is_start_correct = tf.scatter_nd(correct_start_indices,
+                                         correct_start_values,
+                                         tf.shape(model.start_scores))
+
+        # Get relevant scores
+        correct_start_scores = tf.gather_nd(model.start_scores, correct_start_indices)
+        correct_start_mask = -1000.0 * tf.cast(is_start_correct, tf.int64)
+        all_incorrect_start_scores = model.start_scores + correct_start_mask
+        top_incorrect_start_scores = tf.nn.top_k(all_incorrect_start_scores,
+                                                 k=SIGMOID_NEGATIVE_SAMPLES)
+
+        # Compute Cross Entropy Loss
+        correct_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+                correct_start_scores, tf.ones(tf.shape(correct_start_scores)))
+        incorrect_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+                top_incorrect_start_scores, tf.zeros(tf.shape(top_incorrect_start_scores)))
+
+        # Take means over question -> [Q] Arrays
+        correct_start_loss = tf.segment_mean(correct_start_loss, self.question_partition)
+        incorrect_start_loss = tf.segment_mean(tf.reduce_mean(incorrect_start_loss),
+                                               model.context_partition)
+
+        start_loss = tf.reduce_mean(correct_start_loss + incorrect_start_loss)
+        return start_loss
+
+    def end_loss(self, model):
+
+        loss = tf.nn.softmax_cross_entropy_with_logits(model.end_scores,
+                                                       self.answer_ends)
+        return self.reduce_per_answer_loss(loss)
 
     @property
     def loss(self):

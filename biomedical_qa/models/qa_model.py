@@ -144,6 +144,7 @@ class ExtractionQAModel(QAModel):
         for i, qa_setting in enumerate(qa_settings):
             question.append(qa_setting.question + [0] * (max_q_length - len(qa_setting.question)))
             question_length.append(len(qa_setting.question))
+            assert len(qa_setting.contexts) > 0
             for c in qa_setting.contexts:
                 context.append(c + [0] * (max_c_length - len(c)))
                 context_length.append(len(c))
