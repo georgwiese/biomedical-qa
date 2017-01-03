@@ -153,8 +153,8 @@ class ExtractionQATrainer(Trainer):
 
     def end_loss(self, model):
 
-        loss = tf.nn.softmax_cross_entropy_with_logits(model.end_scores,
-                                                       self.answer_ends)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(model.end_scores,
+                                                              self.answer_ends)
         return self.reduce_per_answer_loss(loss)
 
     @property
