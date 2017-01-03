@@ -10,9 +10,12 @@ from biomedical_qa.training.trainer import Trainer
 
 class ExtractionQATrainer(Trainer):
 
-    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
+    def __init__(self, learning_rate, model, device, train_variable_prefixes=[],
+                 start_output_unit="softmax"):
         self._train_variable_prefixes = train_variable_prefixes
+        self._start_output_unit = start_output_unit
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
+        assert self._start_output_unit in ["softmax", "sigmoid"]
         Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
@@ -26,27 +29,17 @@ class ExtractionQATrainer(Trainer):
 
         # Maps each answer index to a question index. Works because within one
         # answer partition, all question IDs should be the same.
-        answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
+        self.answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
 
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
 
-        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
-        end_probs = model.end_probs
-        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
-        correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
-
-        # Prevent NaN losses
-        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
-        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0)
-
-        loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
-
-        # Get any of the alternatives right
-        loss = tf.segment_min(loss, self.answer_partition)
-        # Get all of the answers right
-        loss = tf.segment_mean(loss, answer_question_partition)
-        self._loss = tf.reduce_mean(loss)
+        if self._start_output_unit == "softmax":
+            self._loss = self.softmax_loss(model)
+        elif self._start_output_unit == "sigmoid":
+            self._loss = self.sigmoid_loss(model)
+        else:
+            raise ValueError("Unknown start output unit: %s" % self._start_output_unit)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -102,6 +95,29 @@ class ExtractionQATrainer(Trainer):
             tf.scalar_summary("loss", self._loss)
             tf.scalar_summary("train_f1_mean", self.mean_f1)
             tf.histogram_summary("train_f1", self.f1)
+
+    def softmax_loss(self, model):
+
+        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
+        end_probs = model.end_probs
+        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
+        correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
+
+        # Prevent NaN losses
+        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
+        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0)
+
+        loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
+
+        # Get any of the alternatives right
+        loss = tf.segment_min(loss, self.answer_partition)
+        # Get all of the answers right
+        loss = tf.segment_mean(loss, self.answer_question_partition)
+        return tf.reduce_mean(loss)
+
+    def sigmoid_loss(self, model):
+
+        raise NotImplementedError()
 
     @property
     def loss(self):
