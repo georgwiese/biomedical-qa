@@ -8,7 +8,7 @@ from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import Trainer
 
 
-SIGMOID_NEGATIVE_SAMPLES = 2
+SIGMOID_NEGATIVE_SAMPLES = -1
 
 
 class ExtractionQATrainer(Trainer):
@@ -44,7 +44,8 @@ class ExtractionQATrainer(Trainer):
         else:
             raise ValueError("Unknown start output unit: %s" % self._start_output_unit)
 
-        self._loss = start_loss + self.end_loss(model)
+        end_loss = self.end_loss(model)
+        self._loss = start_loss + end_loss
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -98,6 +99,8 @@ class ExtractionQATrainer(Trainer):
 
         with tf.name_scope("summaries"):
             tf.scalar_summary("loss", self._loss)
+            tf.scalar_summary("start_loss", start_loss)
+            tf.scalar_summary("end_loss", end_loss)
             tf.scalar_summary("train_f1_mean", self.mean_f1)
             tf.histogram_summary("train_f1", self.f1)
 
@@ -133,15 +136,16 @@ class ExtractionQATrainer(Trainer):
         # Get relevant scores
         correct_start_scores = tf.gather_nd(model.start_scores, correct_start_indices)
         correct_start_mask = -1000.0 * is_start_correct
-        all_incorrect_start_scores = model.start_scores + correct_start_mask
-        top_incorrect_start_scores, _ = tf.nn.top_k(all_incorrect_start_scores,
+        incorrect_start_scores = model.start_scores + correct_start_mask
+        if SIGMOID_NEGATIVE_SAMPLES > 0:
+            incorrect_start_scores, _ = tf.nn.top_k(incorrect_start_scores,
                                                     k=SIGMOID_NEGATIVE_SAMPLES)
 
         # Compute Cross Entropy Loss
         correct_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
                 correct_start_scores, tf.ones(tf.shape(correct_start_scores)))
         incorrect_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-                top_incorrect_start_scores, tf.zeros(tf.shape(top_incorrect_start_scores)))
+                incorrect_start_scores, tf.zeros(tf.shape(incorrect_start_scores)))
 
         # Take means over question -> [Q] Arrays
         correct_start_loss = tf.segment_mean(correct_start_loss, self.question_partition)
