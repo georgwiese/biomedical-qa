@@ -22,13 +22,13 @@ class ExtractionQATrainer(Trainer):
         Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
-        self.answer_starts = tf.placeholder(tf.int64, shape=[None], name="answer_start")
-        self.answer_ends = tf.placeholder(tf.int64, shape=[None], name="answer_end")
+        self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
+        self.answer_ends = tf.placeholder(tf.int32, shape=[None], name="answer_end")
 
         # Maps each answer alternative index to a question index
-        self.question_partition = tf.placeholder(tf.int64, shape=[None], name="question_partition")
+        self.question_partition = tf.placeholder(tf.int32, shape=[None], name="question_partition")
         # Maps each answer alternative index to a answer index
-        self.answer_partition = tf.placeholder(tf.int64, shape=[None], name="answer_partition")
+        self.answer_partition = tf.placeholder(tf.int32, shape=[None], name="answer_partition")
 
         # Maps each answer index to a question index. Works because within one
         # answer partition, all question IDs should be the same.
@@ -49,11 +49,11 @@ class ExtractionQATrainer(Trainer):
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
         context_indices = tf.gather(model.predicted_context_indices, self.question_partition)
-        start_pointer = model.predicted_answer_starts
-        end_pointer = model.predicted_answer_ends
+        start_pointer = tf.cast(model.predicted_answer_starts, tf.int32)
+        end_pointer = tf.cast(model.predicted_answer_ends, tf.int32)
 
-        missed_from_start = tf.cast(start_pointer - self.answer_starts, tf.int32)
-        missed_from_end = tf.cast(self.answer_ends - end_pointer, tf.int32)
+        missed_from_start = start_pointer - self.answer_starts
+        missed_from_end = self.answer_ends - end_pointer
         tp = tf.cast(total - tf.minimum(total, tf.maximum(0, missed_from_start) + tf.maximum(0, missed_from_end)), tf.float32)
         fp = tf.cast(tf.maximum(0, -missed_from_start) + tf.maximum(0, -missed_from_end), tf.float32)
 
@@ -123,19 +123,19 @@ class ExtractionQATrainer(Trainer):
 
     def sigmoid_start_loss(self, model):
 
-        correct_start_indices = tf.transpose(tf.pack(model.answer_context_indices,
-                                                     self.answer_starts))
-        correct_start_values = tf.ones([tf.shape(self.answer_starts)[0]], dtype=tf.bool)
+        correct_start_indices = tf.transpose(tf.pack([tf.cast(model.answer_context_indices, tf.int32),
+                                                      self.answer_starts]))
+        correct_start_values = tf.ones([tf.shape(self.answer_starts)[0]], dtype=tf.float32)
         is_start_correct = tf.scatter_nd(correct_start_indices,
                                          correct_start_values,
                                          tf.shape(model.start_scores))
 
         # Get relevant scores
         correct_start_scores = tf.gather_nd(model.start_scores, correct_start_indices)
-        correct_start_mask = -1000.0 * tf.cast(is_start_correct, tf.int64)
+        correct_start_mask = -1000.0 * is_start_correct
         all_incorrect_start_scores = model.start_scores + correct_start_mask
-        top_incorrect_start_scores = tf.nn.top_k(all_incorrect_start_scores,
-                                                 k=SIGMOID_NEGATIVE_SAMPLES)
+        top_incorrect_start_scores, _ = tf.nn.top_k(all_incorrect_start_scores,
+                                                    k=SIGMOID_NEGATIVE_SAMPLES)
 
         # Compute Cross Entropy Loss
         correct_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
@@ -145,7 +145,7 @@ class ExtractionQATrainer(Trainer):
 
         # Take means over question -> [Q] Arrays
         correct_start_loss = tf.segment_mean(correct_start_loss, self.question_partition)
-        incorrect_start_loss = tf.segment_mean(tf.reduce_mean(incorrect_start_loss),
+        incorrect_start_loss = tf.segment_mean(tf.reduce_mean(incorrect_start_loss, axis=1),
                                                model.context_partition)
 
         start_loss = tf.reduce_mean(correct_start_loss + incorrect_start_loss)
