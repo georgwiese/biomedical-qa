@@ -8,54 +8,53 @@ from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import Trainer
 
 
+SIGMOID_NEGATIVE_SAMPLES = -1
+
+
 class ExtractionQATrainer(Trainer):
 
-    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
+    def __init__(self, learning_rate, model, device, train_variable_prefixes=[],
+                 start_output_unit="softmax"):
         self._train_variable_prefixes = train_variable_prefixes
+        self._start_output_unit = start_output_unit
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
+        assert self._start_output_unit in ["softmax", "sigmoid"]
         Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
-        self.answer_starts = tf.placeholder(tf.int64, shape=[None], name="answer_start")
-        self.answer_ends = tf.placeholder(tf.int64, shape=[None], name="answer_end")
+        self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
+        self.answer_ends = tf.placeholder(tf.int32, shape=[None], name="answer_end")
 
         # Maps each answer alternative index to a question index
-        self.question_partition = tf.placeholder(tf.int64, shape=[None], name="question_partition")
+        self.question_partition = tf.placeholder(tf.int32, shape=[None], name="question_partition")
         # Maps each answer alternative index to a answer index
-        self.answer_partition = tf.placeholder(tf.int64, shape=[None], name="answer_partition")
+        self.answer_partition = tf.placeholder(tf.int32, shape=[None], name="answer_partition")
 
         # Maps each answer index to a question index. Works because within one
         # answer partition, all question IDs should be the same.
-        answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
+        self.answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
 
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
 
-        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
-        end_probs = model.end_probs
-        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, self.answer_starts)
-        correct_end_probs = tfutil.gather_rowwise_1d(end_probs, self.answer_ends)
+        if self._start_output_unit == "softmax":
+            start_loss = self.softmax_start_loss(model)
+        elif self._start_output_unit == "sigmoid":
+            start_loss = self.sigmoid_start_loss(model)
+        else:
+            raise ValueError("Unknown start output unit: %s" % self._start_output_unit)
 
-        # Prevent NaN losses
-        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
-        correct_end_probs = tf.clip_by_value(correct_end_probs, 1e-10, 1.0)
-
-        loss = - tf.log(correct_start_probs) - tf.log(correct_end_probs)
-
-        # Get any of the alternatives right
-        loss = tf.segment_min(loss, self.answer_partition)
-        # Get all of the answers right
-        loss = tf.segment_mean(loss, answer_question_partition)
-        self._loss = tf.reduce_mean(loss)
+        end_loss = self.end_loss(model)
+        self._loss = self.reduce_per_answer_loss(start_loss + end_loss)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
         context_indices = tf.gather(model.predicted_context_indices, self.question_partition)
-        start_pointer = model.predicted_answer_starts
-        end_pointer = model.predicted_answer_ends
+        start_pointer = tf.cast(model.predicted_answer_starts, tf.int32)
+        end_pointer = tf.cast(model.predicted_answer_ends, tf.int32)
 
-        missed_from_start = tf.cast(start_pointer - self.answer_starts, tf.int32)
-        missed_from_end = tf.cast(self.answer_ends - end_pointer, tf.int32)
+        missed_from_start = start_pointer - self.answer_starts
+        missed_from_end = self.answer_ends - end_pointer
         tp = tf.cast(total - tf.minimum(total, tf.maximum(0, missed_from_start) + tf.maximum(0, missed_from_end)), tf.float32)
         fp = tf.cast(tf.maximum(0, -missed_from_start) + tf.maximum(0, -missed_from_end), tf.float32)
 
@@ -100,8 +99,64 @@ class ExtractionQATrainer(Trainer):
 
         with tf.name_scope("summaries"):
             tf.scalar_summary("loss", self._loss)
+            tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss))
+            tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss))
             tf.scalar_summary("train_f1_mean", self.mean_f1)
             tf.histogram_summary("train_f1", self.f1)
+
+    def reduce_per_answer_loss(self, loss):
+
+        # Get any of the alternatives right
+        loss = tf.segment_min(loss, self.answer_partition)
+        # Get all of the answers right
+        loss = tf.segment_mean(loss, self.answer_question_partition)
+        return tf.reduce_mean(loss)
+
+    def softmax_start_loss(self, model):
+
+        start_probs = tf.gather(model.start_probs, model.answer_context_indices)
+        correct_start_probs = tfutil.gather_rowwise_1d(start_probs, tf.cast(self.answer_starts, tf.int64))
+
+        # Prevent NaN losses
+        correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
+
+        return - tf.log(correct_start_probs)
+
+    def sigmoid_start_loss(self, model):
+
+        correct_start_indices = tf.transpose(tf.pack([tf.cast(model.answer_context_indices, tf.int32),
+                                                      self.answer_starts]))
+        correct_start_values = tf.ones([tf.shape(self.answer_starts)[0]], dtype=tf.float32)
+        is_start_correct = tf.scatter_nd(correct_start_indices,
+                                         correct_start_values,
+                                         tf.shape(model.start_scores))
+
+        # Get relevant scores
+        correct_start_scores = tf.gather_nd(model.start_scores, correct_start_indices)
+        correct_start_mask = -1000.0 * is_start_correct
+        incorrect_start_scores = model.start_scores + correct_start_mask
+        if SIGMOID_NEGATIVE_SAMPLES > 0:
+            incorrect_start_scores, _ = tf.nn.top_k(incorrect_start_scores,
+                                                    k=SIGMOID_NEGATIVE_SAMPLES)
+
+        # Compute Cross Entropy Loss
+        correct_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+                correct_start_scores, tf.ones(tf.shape(correct_start_scores)))
+        incorrect_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+                incorrect_start_scores, tf.zeros(tf.shape(incorrect_start_scores)))
+
+        # Bring incorrect_start_loss into [Q] shape
+        incorrect_start_loss = tf.segment_mean(tf.reduce_mean(incorrect_start_loss, axis=1),
+                                               model.context_partition)
+        # Now, expand to [len(answers)] shape to match correct_start_loss
+        incorrect_start_loss = tf.gather(incorrect_start_loss, self.question_partition)
+
+        return correct_start_loss + incorrect_start_loss
+
+    def end_loss(self, model):
+
+        return tf.nn.sparse_softmax_cross_entropy_with_logits(model.end_scores,
+                                                              self.answer_ends)
 
     @property
     def loss(self):

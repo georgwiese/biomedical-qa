@@ -41,6 +41,7 @@ tf.app.flags.DEFINE_integer("answer_layer_depth", 1, "Number of layer in the ans
 tf.app.flags.DEFINE_integer("answer_layer_poolsize", 8, "Maxout poolsize in answer layer")
 
 #training
+tf.app.flags.DEFINE_string("start_output_unit", "softmax", "softmax or sigmoid.")
 tf.app.flags.DEFINE_float("dropout", 0.0, "Dropout.")
 tf.app.flags.DEFINE_float("learning_rate", 1e-3, "Learning rate.")
 tf.app.flags.DEFINE_float("min_learning_rate", 1e-4, "Minimal learning rate.")
@@ -148,7 +149,8 @@ with tf.Session(config=config) as sess:
                            answer_layer_type=FLAGS.answer_layer_type)
 
     trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
-                                  train_variable_prefixes=train_variable_prefixes)
+                                  train_variable_prefixes=train_variable_prefixes,
+                                  start_output_unit=FLAGS.start_output_unit)
 
     print("Created %s!" % type(model).__name__)
 
