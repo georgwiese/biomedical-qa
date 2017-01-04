@@ -45,7 +45,7 @@ class ExtractionQATrainer(Trainer):
             raise ValueError("Unknown start output unit: %s" % self._start_output_unit)
 
         end_loss = self.end_loss(model)
-        self._loss = start_loss + end_loss
+        self._loss = self.reduce_per_answer_loss(start_loss + end_loss)
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -99,8 +99,8 @@ class ExtractionQATrainer(Trainer):
 
         with tf.name_scope("summaries"):
             tf.scalar_summary("loss", self._loss)
-            tf.scalar_summary("start_loss", start_loss)
-            tf.scalar_summary("end_loss", end_loss)
+            tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss))
+            tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss))
             tf.scalar_summary("train_f1_mean", self.mean_f1)
             tf.histogram_summary("train_f1", self.f1)
 
@@ -120,9 +120,7 @@ class ExtractionQATrainer(Trainer):
         # Prevent NaN losses
         correct_start_probs = tf.clip_by_value(correct_start_probs, 1e-10, 1.0)
 
-        start_loss = - tf.log(correct_start_probs)
-
-        return self.reduce_per_answer_loss(start_loss)
+        return - tf.log(correct_start_probs)
 
     def sigmoid_start_loss(self, model):
 
@@ -147,19 +145,18 @@ class ExtractionQATrainer(Trainer):
         incorrect_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
                 incorrect_start_scores, tf.zeros(tf.shape(incorrect_start_scores)))
 
-        # Take means over question -> [Q] Arrays
-        correct_start_loss = tf.segment_mean(correct_start_loss, self.question_partition)
+        # Bring incorrect_start_loss into [Q] shape
         incorrect_start_loss = tf.segment_mean(tf.reduce_mean(incorrect_start_loss, axis=1),
                                                model.context_partition)
+        # Now, expand to [len(answers)] shape to match correct_start_loss
+        incorrect_start_loss = tf.gather(incorrect_start_loss, self.question_partition)
 
-        start_loss = tf.reduce_mean(correct_start_loss + incorrect_start_loss)
-        return start_loss
+        return correct_start_loss + incorrect_start_loss
 
     def end_loss(self, model):
 
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(model.end_scores,
+        return tf.nn.sparse_softmax_cross_entropy_with_logits(model.end_scores,
                                                               self.answer_ends)
-        return self.reduce_per_answer_loss(loss)
 
     @property
     def loss(self):
