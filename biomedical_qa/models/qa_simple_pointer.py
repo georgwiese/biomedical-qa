@@ -152,8 +152,8 @@ class QASimplePointerModel(ExtractionQAModel):
         with tf.variable_scope("RNN") as vs:
             if share_rnn:
                 vs.reuse_variables()
-            encoded = fused_birnn(fused_rnn, inputs, sequence_length=length, dtype=tf.float32, time_major=False,
-                                  backward_device=self._device1)[0]
+            encoded = tfutil.fused_birnn(fused_rnn, inputs, sequence_length=length, dtype=tf.float32, time_major=False,
+                                         backward_device=self._device1)[0]
             encoded = tf.concat(2, encoded)
 
         projected = tf.contrib.layers.fully_connected(encoded, self.size,
