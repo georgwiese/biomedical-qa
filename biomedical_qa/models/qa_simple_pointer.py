@@ -42,10 +42,6 @@ class QASimplePointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            self._beam_size = tf.get_variable("beam_size", initializer=1, trainable=False)
-
-            # Fed during training when multiple answers can be correct for one question
-            self.answer_partition = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64)
             self.context_mask = tfutil.mask_for_lengths(self.context_length, self._batch_size, self.embedder.max_length)
 
             question_binary_mask = tfutil.mask_for_lengths(self.question_length,
@@ -76,6 +72,11 @@ class QASimplePointerModel(ExtractionQAModel):
                 attention_weights = tf.nn.softmax(attention_scores, 1)
                 self.question_attention_weights = attention_weights
                 self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
+
+                # Multiply question features for each paragraph
+                self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
+                self.question_representation = tf.gather(self.question_representation, self.context_partition)
+                self.question_length = tf.gather(self.question_length, self.context_partition)
 
                 # context
                 if self._with_features:
@@ -140,7 +141,9 @@ class QASimplePointerModel(ExtractionQAModel):
                                                         dtype=tf.float32, time_major=False, scope="forward")[0]
 
             with tf.variable_scope("pointer_layer"):
-                self._start_scores, self._end_scores, self._start_pointer, self._end_pointer = \
+                self.predicted_context_indices, \
+                self._start_scores, self._start_pointer, self.start_probs, \
+                self._end_scores, self._end_pointer, self.end_probs = \
                     self._spn_answer_layer(self.question_representation, self.encoded_ctxt)
 
             self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
@@ -192,29 +195,6 @@ class QASimplePointerModel(ExtractionQAModel):
         return projected
 
     def _spn_answer_layer(self, question_state, context_states):
-        # Apply beam search only during evaluation
-        beam_size = tf.cond(self._eval,
-                            lambda: self._beam_size,
-                            lambda: tf.constant(1))
-
-        # During evaluation, we'll do the same for each answer
-        answer_partition = tf.cond(self._eval,
-                                   lambda: tf.cast(tf.range(tf.shape(question_state)[0]), tf.int64),
-                                   lambda: self.answer_partition)
-
-        start_scores, end_scores, starts, ends = self._spn_answer_layer_impl(
-            question_state, context_states, answer_partition, beam_size)
-
-        # Expand Evaluation results to match answer_partition
-        def expand_if_eval(tensor):
-            return tf.cond(self._eval,
-                           lambda: tf.gather(tensor, self.answer_partition),
-                           lambda: tensor)
-
-        return [expand_if_eval(x) for x in [start_scores, end_scores, starts, ends]]
-
-    def _spn_answer_layer_impl(self, question_state, context_states, answer_partition, beam_size):
-        beam_search_span_extractor = BeamSearchSpanExtractor(beam_size, answer_partition)
 
         input_size = context_states.get_shape()[-1].value
         context_states_flat = tf.reshape(context_states, [-1, input_size])
@@ -242,18 +222,21 @@ class QASimplePointerModel(ExtractionQAModel):
         start_scores = tf.squeeze(start_scores, [2])
         start_scores = start_scores + self.context_mask
 
-        predicted_start_pointer = beam_search_span_extractor.receive_start_scores(start_scores)
+        contexts, starts = tfutil.segment_argmax(start_scores, self.context_partition)
+        start_probs = tfutil.segment_softmax(start_scores, self.context_partition)
 
-        partition = beam_search_span_extractor.expand_batch(answer_partition)
-        question_state = tf.gather(question_state, partition)
-        context_states = tf.gather(context_states, partition)
-        offsets = tf.gather(offsets, partition)
-        start_input = tf.gather(start_input, partition)
-        context_mask = tf.gather(self.context_mask, partition)
+        # From now on, answer_context_indices need to be fed.
+        # There will be an end pointer prediction for each start pointer.
+        starts = tf.gather(starts, self.context_partition)
+        starts = tf.gather(starts, self.answer_context_indices)
+        question_state = tf.gather(question_state, self.answer_context_indices)
+        context_states = tf.gather(context_states, self.answer_context_indices)
+        offsets = tf.gather(offsets, self.answer_context_indices)
+        context_mask = tf.gather(self.context_mask, self.answer_context_indices)
 
         start_pointer = tf.cond(self._eval,
-                                lambda: predicted_start_pointer,
-                                lambda: beam_search_span_extractor.expand_batch(self.correct_start_pointer))
+                                lambda: starts,
+                                lambda: self.correct_start_pointer)
 
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
@@ -277,11 +260,10 @@ class QASimplePointerModel(ExtractionQAModel):
                                                        scope="end_scores")
         end_scores = tf.squeeze(end_scores, [2])
         end_scores = end_scores + context_mask
+        ends = tf.argmax(end_scores, axis=1)
+        end_probs = tf.nn.softmax(end_scores)
 
-        beam_search_span_extractor.receive_end_scores(end_scores)
-        self.top_starts, self.top_ends = beam_search_span_extractor.get_top_spans()
-
-        return beam_search_span_extractor.get_final_prediction()
+        return contexts, start_scores, starts, start_probs, end_scores, ends, end_probs
 
     def set_eval(self, sess):
         super().set_eval(sess)
@@ -290,10 +272,6 @@ class QASimplePointerModel(ExtractionQAModel):
     def set_train(self, sess):
         super().set_train(sess)
         sess.run(self._set_train)
-
-    def set_beam_size(self, sess, beam_size):
-        assign_op = self._beam_size.assign(beam_size)
-        sess.run([assign_op])
 
     @property
     def end_scores(self):
