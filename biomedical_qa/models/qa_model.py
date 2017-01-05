@@ -89,9 +89,14 @@ class ExtractionQAModel(QAModel):
             self.top_k = tf.get_variable("k_answers", trainable=False, dtype=tf.int32, initializer=1)
             self._top_k_placeholder = tf.placeholder(tf.int32, tuple(), "top_k_placeholder")
             self._set_top_k = self.top_k.assign(self._top_k_placeholder)
+            self._word_in_question = tf.placeholder(tf.float32, [None, None], "word_in_question")
 
             # Maps context index to question index
             self.context_partition = tf.placeholder(tf.int64, [None], "context_partition")
+
+            # Fed during Training & end pointer prediction
+            self.correct_start_pointer = tf.placeholder(tf.int64, [None], "correct_start_pointer")
+            self.answer_context_indices = tf.placeholder(tf.int64, [None], "answer_context_indices")
 
             with tf.variable_scope("embeddings"):
                 # embeddings
@@ -101,6 +106,9 @@ class ExtractionQAModel(QAModel):
                 embedded_context = self.embedder.embedded_words
                 self.embedded_question = tf.nn.dropout(embedded_question, self.keep_prob)
                 self.embedded_context = tf.nn.dropout(embedded_context, self.keep_prob)
+
+                self._embedded_question_not_dropped = embedded_question
+                self._embedded_context_not_dropped = embedded_context
 
     def set_top_k(self, sess, k):
         return sess.run(self._set_top_k, feed_dict={self._top_k_placeholder:k})
@@ -137,6 +145,8 @@ class ExtractionQAModel(QAModel):
         context = []
         context_length = []
 
+        is_q_word = []
+
         context_partition = []
 
         max_q_length = max([len(s.question) for s in qa_settings])
@@ -144,9 +154,11 @@ class ExtractionQAModel(QAModel):
         for i, qa_setting in enumerate(qa_settings):
             question.append(qa_setting.question + [0] * (max_q_length - len(qa_setting.question)))
             question_length.append(len(qa_setting.question))
+
             assert len(qa_setting.contexts) > 0
             for c in qa_setting.contexts:
                 context.append(c + [0] * (max_c_length - len(c)))
+                is_q_word.append([1.0 if w in qa_setting.question else 0.0 for w in context[-1]])
                 context_length.append(len(c))
                 context_partition.append(i)
 
@@ -154,6 +166,7 @@ class ExtractionQAModel(QAModel):
         feed_dict[self.context_partition] = context_partition
         feed_dict.update(self.embedder.get_feed_dict(context, context_length))
         feed_dict.update(self.question_embedder.get_feed_dict(question, question_length))
+        feed_dict[self._word_in_question] = is_q_word
 
         return feed_dict
 

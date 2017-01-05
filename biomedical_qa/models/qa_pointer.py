@@ -44,10 +44,6 @@ class QAPointerModel(ExtractionQAModel):
             self._set_train = self._eval.initializer
             self._set_eval = self._eval.assign(True)
 
-            # Fed during Training & end pointer prediction
-            self.correct_start_pointer = tf.placeholder(tf.int64, [None], "correct_start_pointer")
-            self.answer_context_indices = tf.placeholder(tf.int64, [None], "answer_context_indices")
-
             with tf.control_dependencies(self._depends_on):
                 with tf.variable_scope("preprocessing_layer"):
 
@@ -200,7 +196,7 @@ class QAPointerModel(ExtractionQAModel):
         end_scores = tf.cond(self._eval,
                              lambda: masked_end_scores,
                              lambda: end_scores)
-        
+
         ends = tf.argmax(end_scores, axis=1)
         end_probs = tf.nn.softmax(end_scores)
 

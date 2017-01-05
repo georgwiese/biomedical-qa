@@ -1,4 +1,5 @@
-from tensorflow.python.ops.rnn_cell import RNNCell, GRUCell
+from tensorflow.python.ops.rnn_cell import RNNCell, GRUCell, BasicLSTMCell, \
+    LSTMStateTuple
 import tensorflow as tf
 import numpy as np
 
@@ -414,3 +415,99 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
     out = out + tfutil.mask_for_lengths(lengths, max_length=tf.shape(states)[1])
 
     return out
+
+class GatedAggregationRNNCell(RNNCell):
+    def __init__(self, size):
+        self._size = size
+
+    @property
+    def state_size(self):
+        return self._size
+
+    @property
+    def output_size(self):
+        return self._size
+
+    def __call__(self, inputs, state, scope=None):
+        with tf.variable_scope(scope or type(self).__name__):
+            u = tf.contrib.layers.fully_connected(tf.concat(1, [inputs, state]),
+                                                  self._size, activation_fn=tf.sigmoid,
+                                                  biases_initializer=tf.constant_initializer(1.0),
+                                                  weights_initializer=None, scope="update_gate")
+
+            out = u * inputs + (1.0-u) * state
+
+            return out, out
+
+class LayerNormGRUCell(GRUCell):
+    def __call__(self, inputs, state, scope=None):
+        with tf.variable_scope(scope or type(self).__name__):  # "GRUCell"
+            # We start with bias of 1.0 to not reset and not update.
+            concat_from_inp = tf.contrib.layers.fully_connected(inputs, 3 * self._num_units,
+                                                                activation_fn=None,
+                                                                weights_initializer=None,
+                                                                biases_initializer=None,
+                                                                scope="from_input")
+            concat_from_inp = tf.contrib.layers.layer_norm(concat_from_inp)
+            r_i, u_i, c_i = tf.split(1, 3, concat_from_inp)
+
+            with tf.variable_scope("Gates"):
+                concat_from_h = tf.contrib.layers.fully_connected(state, 2 * self._num_units,
+                                                                  activation_fn=None,
+                                                                  weights_initializer=None,
+                                                                  biases_initializer=None,
+                                                                  scope="from_recurrent")
+                concat_from_h = tf.contrib.layers.layer_norm(concat_from_h)
+                r_h, u_h = tf.split(1, 2, concat_from_h)
+
+                r, u = tf.sigmoid(r_i + r_h), tf.sigmoid(u_i + u_h)
+            with tf.variable_scope("Candidate"):
+                c_h = tf.contrib.layers.fully_connected(r * state, self._num_units,
+                                                        activation_fn=None,
+                                                        weights_initializer=None,
+                                                        biases_initializer=None,
+                                                        scope="from_recurrent")
+
+                c_h = tf.contrib.layers.layer_norm(c_h)
+                c = self._activation(c_h + c_i)
+
+            new_h = u * state + (1 - u) * c
+            return new_h, new_h
+
+
+class LayerNormLSTMCell(BasicLSTMCell):
+
+    def __call__(self, inputs, state, scope=None):
+        """Long short-term memory cell (LSTM)."""
+        with tf.variable_scope(scope or type(self).__name__):  # "BasicLSTMCell"
+            # Parameters of gates are concatenated into one multiply for efficiency.
+            if self._state_is_tuple:
+                c, h = state
+            else:
+                c, h = tf.split(1, 2, state)
+
+            concat_from_inp = tf.contrib.layers.fully_connected(inputs, 4 * self._num_units,
+                                                                activation_fn=None,
+                                                                weights_initializer=None,
+                                                                biases_initializer=None,
+                                                                scope="from_input")
+            concat_from_h = tf.contrib.layers.fully_connected(inputs, 4 * self._num_units,
+                                                              activation_fn=None,
+                                                              weights_initializer=None,
+                                                              biases_initializer=None,
+                                                              scope="from_recurrent")
+
+            concat = tf.contrib.layers.layer_norm(concat_from_inp, "layer_norm_inp") + tf.contrib.layers.layer_norm(concat_from_h, "layer_norm_h")
+
+            # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+            i, j, f, o = tf.split(1, 4, concat)
+
+            new_c = (c * tf.sigmoid(f + self._forget_bias) + tf.sigmoid(i) *
+                     self._activation(j))
+            new_h = self._activation(tf.contrib.layers.layer_norm(new_c, "layer_norm_c")) * tf.sigmoid(o)
+
+            if self._state_is_tuple:
+                new_state = LSTMStateTuple(new_c, new_h)
+            else:
+                new_state = tf.concat(1, [new_c, new_h])
+            return new_h, new_state
