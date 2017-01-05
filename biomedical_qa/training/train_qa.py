@@ -10,6 +10,7 @@ import tensorflow as tf
 from biomedical_qa.models import model_from_config
 from biomedical_qa.models.embedder import CharWordEmbedder
 from biomedical_qa.models.qa_pointer import QAPointerModel
+from biomedical_qa.models.qa_simple_pointer import QASimplePointerModel
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
@@ -34,7 +35,7 @@ tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for B
 tf.app.flags.DEFINE_integer("size", 150, "hidden size of model")
 tf.app.flags.DEFINE_integer("max_length", 30, "max length of answer or question depending on task.")
 tf.app.flags.DEFINE_string("composition", 'GRU', "'LSTM', 'GRU'")
-tf.app.flags.DEFINE_string("name", "QAModel", "Name of the model.")
+tf.app.flags.DEFINE_string("model_type", "qa_pointer", "[qa_pointer, qa_simple_pointer].")
 
 tf.app.flags.DEFINE_string("answer_layer_type", "dpn", "Type of answer layer ([dpn]).")
 tf.app.flags.DEFINE_integer("answer_layer_depth", 1, "Number of layer in the answer layer")
@@ -142,11 +143,17 @@ with tf.Session(config=config) as sess:
         devices = devices[1:]
 
     print("Creating model with name %s..." % FLAGS.name)
-    model = QAPointerModel(FLAGS.size, transfer_model, devices=devices, name=FLAGS.name,
-                           keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
-                           answer_layer_depth=FLAGS.answer_layer_depth,
-                           answer_layer_poolsize=FLAGS.answer_layer_poolsize,
-                           answer_layer_type=FLAGS.answer_layer_type)
+    if FLAGS.model_type == "qa_pointer":
+        model = QAPointerModel(FLAGS.size, transfer_model, devices=devices,
+                                     keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
+                                     answer_layer_depth=FLAGS.answer_layer_depth,
+                                     answer_layer_poolsize=FLAGS.answer_layer_poolsize,
+                                     answer_layer_type=FLAGS.answer_layer_type)
+    elif FLAGS.model_type == "qa_simple_pointer":
+        model = QASimplePointerModel(FLAGS.size, transfer_model, devices=devices,
+                                     keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition)
+    else:
+        raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 
     trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
                                   train_variable_prefixes=train_variable_prefixes,
