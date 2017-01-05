@@ -111,7 +111,7 @@ with tf.Session(config=config) as sess:
         vocab, _, _ = load_vocab(os.path.join(FLAGS.data, "document.vocab"))
         if FLAGS.max_vocab < 0:
             FLAGS.max_vocab = len(vocab)
-        transfer_model = CharWordEmbedder(FLAGS.size, vocab, devices[0], name=FLAGS.name)
+        transfer_model = CharWordEmbedder(FLAGS.size, vocab, devices[0])
     else:
         print("Creating transfer model from config %s" % FLAGS.transfer_model_config)
         with open(FLAGS.transfer_model_config, 'rb') as f:
@@ -142,7 +142,7 @@ with tf.Session(config=config) as sess:
     if len(devices) > 1:
         devices = devices[1:]
 
-    print("Creating model with name %s..." % FLAGS.name)
+    print("Creating model of type %s..." % FLAGS.model_type)
     if FLAGS.model_type == "qa_pointer":
         model = QAPointerModel(FLAGS.size, transfer_model, devices=devices,
                                      keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
