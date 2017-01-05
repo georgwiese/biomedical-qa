@@ -231,6 +231,7 @@ class QASimplePointerModel(ExtractionQAModel):
         starts = tf.gather(starts, self.answer_context_indices)
         question_state = tf.gather(question_state, self.answer_context_indices)
         context_states = tf.gather(context_states, self.answer_context_indices)
+        start_input = tf.gather(start_input, self.answer_context_indices)
         offsets = tf.gather(offsets, self.answer_context_indices)
         context_mask = tf.gather(self.context_mask, self.answer_context_indices)
 
