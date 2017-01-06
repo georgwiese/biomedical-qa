@@ -18,6 +18,8 @@ tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
 tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 
+tf.app.flags.DEFINE_string("start_output_unit", "softmax", "[softmax, sigmoid].")
+
 tf.app.flags.DEFINE_boolean("is_bioasq", False, "Whether the provided dataset is a BioASQ json.")
 tf.app.flags.DEFINE_boolean("bioasq_include_synonyms", False, "Whether BioASQ synonyms should be included.")
 tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for BioASQ contexts.")
@@ -127,7 +129,7 @@ def main():
     devices = FLAGS.devices.split(",")
 
     inferrer = Inferrer(FLAGS.model_config, devices, FLAGS.beam_size,
-                        FLAGS.model_weights)
+                        FLAGS.model_weights, FLAGS.start_output_unit)
 
     print("Initializing Sampler & Trainer...")
     data_dir = os.path.dirname(FLAGS.eval_data)
@@ -148,7 +150,8 @@ def main():
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
-        trainer = ExtractionQATrainer(0, inferrer.model, devices[0])
+        trainer = ExtractionQATrainer(0, inferrer.model, devices[0],
+                                      start_output_unit=FLAGS.start_output_unit)
         trainer.eval(inferrer.sess, sampler, verbose=True)
 
     if FLAGS.bioasq_evaluation:

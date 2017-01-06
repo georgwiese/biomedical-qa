@@ -22,7 +22,8 @@ class Inferrer(object):
 
 
     def __init__(self, model_config_file, devices, beam_size,
-                 model_weights_file=None):
+                 model_weights_file=None,
+                 start_output_unit="softmax"):
 
         print("Loading Model...")
         with open(model_config_file, 'rb') as f:
@@ -43,7 +44,9 @@ class Inferrer(object):
         self.model.model_saver.restore(self.sess, model_weights_file)
         self.model.set_eval(self.sess)
 
-        self.beam_search_decoder = BeamSearchDecoder(self.sess, self.model, beam_size)
+        self.beam_search_decoder = BeamSearchDecoder(self.sess, self.model,
+                                                     beam_size,
+                                                     start_output_unit)
 
 
     def get_predictions(self, sampler):

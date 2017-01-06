@@ -22,11 +22,14 @@ class BeamSearchDecoder(object):
     """From a QASetting batch, computes most likely (start, end) pairs via beam search."""
 
 
-    def __init__(self, sess, model, beam_size):
+    def __init__(self, sess, model, beam_size, start_output_unit):
 
         self._sess = sess
         self._model = model
         self._beam_size = beam_size
+        self._start_output_unit = start_output_unit
+
+        assert start_output_unit in ["softmax", "sigmoid"]
 
 
     def decode(self, qa_settings):
@@ -38,13 +41,18 @@ class BeamSearchDecoder(object):
 
         self._model.set_eval(self._sess)
 
+        start_probs_tensor = self._model.start_probs \
+                                if self._start_output_unit == "softmax" \
+                                else self._model.sigmoid_start_probs
+
         # Get start probs, context partition and all relevant intermediate results
         # to predict end pointer later.
-        context_partition, matched_output, question_representation, start_probs = self._sess.run(
+        context_partition, matched_output, question_representation, start_probs = \
+            self._sess.run(
                 [self._model.context_partition,
                  self._model.matched_output,
                  self._model.question_representation,
-                 self._model.start_probs],
+                 start_probs_tensor],
                 self._model.get_feed_dict(qa_settings))
 
         num_questions = context_partition[-1] + 1
