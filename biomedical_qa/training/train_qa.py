@@ -37,6 +37,10 @@ tf.app.flags.DEFINE_integer("max_length", 30, "max length of answer or question 
 tf.app.flags.DEFINE_string("composition", 'GRU', "'LSTM', 'GRU'")
 tf.app.flags.DEFINE_string("model_type", "qa_pointer", "[qa_pointer, qa_simple_pointer].")
 
+# qa_simple_pointer settings
+tf.app.flags.DEFINE_bool("with_fusion", False, "Whether Inter & Intra fusion is activated.")
+
+# qa_pointer settings
 tf.app.flags.DEFINE_string("answer_layer_type", "dpn", "Type of answer layer ([dpn]).")
 tf.app.flags.DEFINE_integer("answer_layer_depth", 1, "Number of layer in the answer layer")
 tf.app.flags.DEFINE_integer("answer_layer_poolsize", 8, "Maxout poolsize in answer layer")
@@ -150,8 +154,12 @@ with tf.Session(config=config) as sess:
                                      answer_layer_poolsize=FLAGS.answer_layer_poolsize,
                                      answer_layer_type=FLAGS.answer_layer_type)
     elif FLAGS.model_type == "qa_simple_pointer":
+        with_inter_fusion = FLAGS.with_fusion
+        num_intrafusion_layers = 1 if FLAGS.with_fusion else 0
         model = QASimplePointerModel(FLAGS.size, transfer_model, devices=devices,
-                                     keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition)
+                                     keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
+                                     num_intrafusion_layers=num_intrafusion_layers,
+                                     with_inter_fusion=with_inter_fusion)
     else:
         raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 
