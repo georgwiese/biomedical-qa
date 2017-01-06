@@ -41,6 +41,7 @@ class QASetting:
         self.answers = [[vocab.get(w, unk_id) for w in a] for a in self.answers]
 
 from biomedical_qa.models.qa_pointer import QAPointerModel
+from biomedical_qa.models.qa_simple_pointer import QASimplePointerModel
 
 
 def model_from_config(config, devices=None, dropout=0.0, inputs=None, seq_lengths=None, reuse=False):
@@ -62,7 +63,6 @@ def model_from_config(config, devices=None, dropout=0.0, inputs=None, seq_length
     elif type == "pointer":
         return QAPointerModel.create_from_config(config, devices, dropout)
     elif type == "simple_pointer":
-        from genie_qa.models.qa_pointer import QASimplePointerModel
         return QASimplePointerModel.create_from_config(config, devices, dropout)
     else:
         raise NotImplementedError("Unknown model type: %s" % type)

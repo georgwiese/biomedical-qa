@@ -32,10 +32,11 @@ tf.app.flags.DEFINE_boolean("bioasq_include_synonyms", False, "Whether BioASQ sy
 tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for BioASQ contexts.")
 
 # model
+tf.app.flags.DEFINE_string("model_config", None, "Config of the model.")
 tf.app.flags.DEFINE_integer("size", 150, "hidden size of model")
 tf.app.flags.DEFINE_integer("max_length", 30, "max length of answer or question depending on task.")
 tf.app.flags.DEFINE_string("composition", 'GRU', "'LSTM', 'GRU'")
-tf.app.flags.DEFINE_string("model_type", "qa_pointer", "[qa_pointer, qa_simple_pointer].")
+tf.app.flags.DEFINE_string("model_type", "qa_pointer", "[pointer, simple_pointer].")
 
 # qa_simple_pointer settings
 tf.app.flags.DEFINE_bool("with_fusion", False, "Whether Inter & Intra fusion is activated.")
@@ -111,57 +112,59 @@ with tf.Session(config=config) as sess:
     train_variable_prefixes = FLAGS.train_variable_prefixes.split(",") \
                               if FLAGS.train_variable_prefixes else []
 
-    if FLAGS.transfer_model_config is None:
-        vocab, _, _ = load_vocab(os.path.join(FLAGS.data, "document.vocab"))
-        if FLAGS.max_vocab < 0:
-            FLAGS.max_vocab = len(vocab)
-        transfer_model = CharWordEmbedder(FLAGS.size, vocab, devices[0])
-    else:
-        print("Creating transfer model from config %s" % FLAGS.transfer_model_config)
-        with open(FLAGS.transfer_model_config, 'rb') as f:
-            transfer_model_config = pickle.load(f)
+    if FLAGS.model_config is not None:
 
-        if FLAGS.transfer_qa:
-            transfer_model = model_from_config(transfer_model_config, devices[0:1])
-            vocab = transfer_model.embedder.vocab
+        with open(FLAGS.model_config, 'rb') as f:
+            model_config = pickle.load(f)
+        model = model_from_config(model_config, devices, FLAGS.dropout)
+
+    else:
+
+        if FLAGS.transfer_model_config is None:
+            vocab, _, _ = load_vocab(os.path.join(FLAGS.data, "document.vocab"))
+            if FLAGS.max_vocab < 0:
+                FLAGS.max_vocab = len(vocab)
+            transfer_model = CharWordEmbedder(FLAGS.size, vocab, devices[0])
         else:
-            transfer_model = model_from_config(transfer_model_config, devices[0:1])
-            vocab = transfer_model.vocab
+            print("Creating transfer model from config %s" % FLAGS.transfer_model_config)
+            with open(FLAGS.transfer_model_config, 'rb') as f:
+                transfer_model_config = pickle.load(f)
+
+            if FLAGS.transfer_qa:
+                transfer_model = model_from_config(transfer_model_config, devices[0:1])
+            else:
+                transfer_model = model_from_config(transfer_model_config, devices[0:1])
+
+        print("Creating model of type %s..." % FLAGS.model_type)
+        if FLAGS.model_type == "qa_pointer":
+            model = QAPointerModel(FLAGS.size, transfer_model, devices=devices,
+                                         keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
+                                         answer_layer_depth=FLAGS.answer_layer_depth,
+                                         answer_layer_poolsize=FLAGS.answer_layer_poolsize,
+                                         answer_layer_type=FLAGS.answer_layer_type)
+        elif FLAGS.model_type == "qa_simple_pointer":
+            with_inter_fusion = FLAGS.with_fusion
+            num_intrafusion_layers = 1 if FLAGS.with_fusion else 0
+            model = QASimplePointerModel(FLAGS.size, transfer_model, devices=devices,
+                                         keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
+                                         num_intrafusion_layers=num_intrafusion_layers,
+                                         with_inter_fusion=with_inter_fusion)
+        else:
+            raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 
     print("Preparing Samplers ...")
     train_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.trainset_prefix)]
     random.shuffle(train_fns)
     print("Training sets (first 100): ", train_fns[:100])
-    sampler = make_sampler(train_fns, vocab)
+    sampler = make_sampler(train_fns, model.transfer_model.vocab)
 
     valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
     print("Valid sets: (first 100)", valid_fns[:100])
-    valid_sampler = make_sampler(valid_fns, vocab)
+    valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab)
     test_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.testset_prefix)]
     if test_fns:
         print("Test sets: (first 100)", test_fns[:100])
-        test_sampler = SQuADSampler(FLAGS.data, test_fns, FLAGS.batch_size, vocab, FLAGS.max_instances)
-
-    embedder_device = devices[0]
-    if len(devices) > 1:
-        devices = devices[1:]
-
-    print("Creating model of type %s..." % FLAGS.model_type)
-    if FLAGS.model_type == "qa_pointer":
-        model = QAPointerModel(FLAGS.size, transfer_model, devices=devices,
-                                     keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
-                                     answer_layer_depth=FLAGS.answer_layer_depth,
-                                     answer_layer_poolsize=FLAGS.answer_layer_poolsize,
-                                     answer_layer_type=FLAGS.answer_layer_type)
-    elif FLAGS.model_type == "qa_simple_pointer":
-        with_inter_fusion = FLAGS.with_fusion
-        num_intrafusion_layers = 1 if FLAGS.with_fusion else 0
-        model = QASimplePointerModel(FLAGS.size, transfer_model, devices=devices,
-                                     keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
-                                     num_intrafusion_layers=num_intrafusion_layers,
-                                     with_inter_fusion=with_inter_fusion)
-    else:
-        raise ValueError("Unknown model type: %s" % FLAGS.model_type)
+        test_sampler = SQuADSampler(FLAGS.data, test_fns, FLAGS.batch_size, model.transfer_model.vocab, FLAGS.max_instances)
 
     trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
                                   train_variable_prefixes=train_variable_prefixes,
