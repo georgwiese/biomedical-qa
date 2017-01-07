@@ -8,7 +8,9 @@ Learning to read, unsupervised
 """
 import tensorflow as tf
 import numpy as np
+import math
 
+from biomedical_qa import tfutil
 from biomedical_qa.models.model import ConfigurableModel
 
 
@@ -207,7 +209,7 @@ class ConstantWordEmbedder(WordEmbedder):
 
     def __init__(self, size, vocab, unk_id, embeddings, name="Embedder", reuse=False, inputs=None, seq_lengths=None):
         self._embeddings = embeddings
-        super().__init__(size, embeddings.shape[0], vocab, unk_id, name, reuse, inputs, seq_lengths)
+        super().__init__(size, len(vocab), vocab, unk_id, name, reuse, inputs, seq_lengths)
 
     def _init(self):
         with tf.device("/cpu:0"):
@@ -226,8 +228,6 @@ class ConstantWordEmbedder(WordEmbedder):
 
     def get_feed_dict(self, inputs, seq_lengths):
         feed_dict = super().get_feed_dict(inputs, seq_lengths)
-        feed_dict[self._inputs] = inputs
-        feed_dict[self._seq_lengths] = seq_lengths
 
         if isinstance(inputs, list):
             batch_size = len(inputs)
@@ -236,7 +236,7 @@ class ConstantWordEmbedder(WordEmbedder):
             batch_size = inputs.shape[0]
             max_l = np.max(seq_lengths)
 
-        embedded_inputs = np.zeros([batch_size, max_l, self._embeddings.shape[1]])
+        embedded_inputs = np.zeros([batch_size, max_l, self.size])
         for i in range(len(inputs)):
             for j in range(seq_lengths[i]):
                 embedded_inputs[i, j] = self._embeddings[inputs[i][j]]
@@ -292,9 +292,11 @@ class CharWordEmbedder(WordEmbedder):
     def _init(self):
         # build char_vocab
         # reset vocab_size to size of actual vocabulary
-        self.vocab_size = max(self.vocab.values())+1
-        max_l = max(len(w) for w in self.vocab)
-        self.char_vocab = dict()
+        conv_width = 5
+        pad_right = math.ceil(conv_width / 2) # "fixed PAD o right side"
+        self.vocab_size = max(self.vocab.values())+ 1
+        max_l = max(len(w) for w in self.vocab) + pad_right
+        self.char_vocab = {"PAD": 0}
         self._word_to_chars_arr = np.zeros((self.vocab_size, max_l), np.int16)
         self._word_lengths_arr = np.zeros([self.vocab_size], np.int8)
         for w, i in sorted(self.vocab.items()):
@@ -304,12 +306,12 @@ class CharWordEmbedder(WordEmbedder):
                     j = len(self.char_vocab)
                     self.char_vocab[c] = j
                 self._word_to_chars_arr[i, k] = j
-            self._word_lengths_arr[i] = len(w)
+            self._word_lengths_arr[i] = len(w) + conv_width - 1
 
         with tf.device("/cpu:0"):
             with tf.variable_scope("embeddings"):
-                self._word_to_chars = tf.placeholder(tf.int16, [None, None], "word_to_chars")
-                self._word_lengths = tf.placeholder(tf.int8, [None], "word_lengths")
+                self._word_to_chars = tf.placeholder(tf.int64, [None, None], "word_to_chars")
+                self._word_lengths = tf.placeholder(tf.int64, [None], "word_lengths")
                 self.char_embedding_matrix = \
                     tf.get_variable("char_embedding_matrix", shape=(len(self.char_vocab), self.size),
                                     initializer=tf.random_normal_initializer(0.0, 0.1), trainable=True)
@@ -320,26 +322,27 @@ class CharWordEmbedder(WordEmbedder):
 
                 self.unique_words = tf.placeholder(tf.int64, [None], "unique_words") #tf.unique(tf.reshape(self._sliced_inputs, [-1]))
                 self._word_idx = tf.placeholder(tf.int64, [None], "word_idx")
-                self._new_inputs = tf.cast(tf.reshape(self._word_idx, tf.shape(self._sliced_inputs)), tf.int64)
+                self._new_inputs = tf.reshape(self._word_idx, tf.shape(self._sliced_inputs))
 
-                chars = tf.cast(tf.nn.embedding_lookup(self._word_to_chars, self.unique_words), tf.int64)
-                wl = tf.cast(tf.nn.embedding_lookup(self._word_lengths, self.unique_words), tf.int64)
+                chars = tf.nn.embedding_lookup(self._word_to_chars, self.unique_words)
+                wl = tf.nn.embedding_lookup(self._word_lengths, self.unique_words)
                 max_word_length = tf.cast(tf.reduce_max(wl), tf.int32)
                 chars = tf.slice(chars, [0, 0], tf.pack([-1, max_word_length]))
 
                 embedded_chars = tf.nn.embedding_lookup(self.char_embedding_matrix, chars)
                 #embedded_chars_reshaped = tf.reshape(embedded_chars, tf.pack([-1, max_word_length, 4 *  self.size]))
                 with tf.device(self._device):
-                    cell = tf.nn.rnn_cell.GRUCell(2 * self.size)
-                    _, final_states = tf.nn.bidirectional_dynamic_rnn(cell, cell, embedded_chars,
-                                                                      sequence_length=tf.reshape(wl, [-1]),
-                                                                      dtype=tf.float32, swap_memory=True)
-                    final_state = tf.concat(1, final_states)
+                    with tf.variable_scope("conv"):
+                        # [B, T, S]
+                        filter = tf.get_variable("filter", [conv_width*self.size, self.size])
+                        filter_reshaped = tf.reshape(filter, [conv_width, self.size, self.size])
+                        # [B, T, S]
+                        conv_out = tf.nn.conv1d(embedded_chars, filter_reshaped, 1, "SAME")
+                        conv_mask = tf.expand_dims(tfutil.mask_for_lengths(self._word_lengths - pad_right,
+                                                                           max_length=max_word_length), 2)
+                        conv_out = conv_out + conv_mask
 
-                    self.unique_embedded_words = tf.contrib.layers.fully_connected(final_state, self.size,
-                                                                                   activation_fn=None,
-                                                                                   biases_initializer=None,
-                                                                                   weights_initializer=None)
+                    self.unique_embedded_words = tf.reduce_max(conv_out, [1])
 
                     embedded_words = tf.gather(self.unique_embedded_words, self._word_idx)
                     self._embedded_words = tf.reshape(embedded_words, tf.pack([-1, self.max_length, self.size]))
@@ -455,7 +458,7 @@ class StackedEmbedder(Embedder):
     def _init(self):
         if self._dropout > 0.0:
             self.keep_prob = tf.get_variable("keep_prob", [], initializer=tf.constant_initializer(1.0-self._dropout),
-                                     trainable=False)
+                                             trainable=False)
             self._keep_prob_placeholder = tf.placeholder(tf.float32, name="keep_prob_placeholder")
             self._keep_prob_assign = tf.assign(self.keep_prob, self._keep_prob_placeholder)
 
@@ -603,7 +606,7 @@ class ConcatEmbedder(Embedder):
         :param config: dictionary of parameters for creating an embedder
         :return:
         """
-        from quebap.projects.autoread import model_from_config
+        from biomedical_qa.models import model_from_config
         first_embedder = model_from_config(config["embedders"][0], devices, dropout, inputs, seq_lengths, reuse)
         inputs = first_embedder.inputs
         seq_lengths = first_embedder.seq_lengths

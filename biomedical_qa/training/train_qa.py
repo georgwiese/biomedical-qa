@@ -8,7 +8,7 @@ import time
 import tensorflow as tf
 
 from biomedical_qa.models import model_from_config
-from biomedical_qa.models.embedder import CharWordEmbedder
+from biomedical_qa.models.embedder import CharWordEmbedder, ConcatEmbedder
 from biomedical_qa.models.qa_pointer import QAPointerModel
 from biomedical_qa.models.qa_simple_pointer import QASimplePointerModel
 from biomedical_qa.sampling.bioasq import BioAsqSampler
@@ -70,7 +70,7 @@ tf.app.flags.DEFINE_integer("max_epochs", 40, "Maximum number of epochs.")
 tf.app.flags.DEFINE_string("train_variable_prefixes", "", "Comma-seperated list of variable name prefixes that should be trained.")
 
 #embedder
-tf.app.flags.DEFINE_boolean("transfer_qa", False, "Tranfer-model (if given) is a QAModel")
+tf.app.flags.DEFINE_boolean("with_chars", False, "Use char word-embedder additionally.")
 tf.app.flags.DEFINE_string("transfer_model_config", None, "Path to transfer model config.")
 tf.app.flags.DEFINE_string("transfer_model_path", None, "Path to transfer model model.")
 tf.app.flags.DEFINE_integer("transfer_layer_size", None, "Learning rate for transfer model.")
@@ -119,21 +119,16 @@ with tf.Session(config=config) as sess:
         model = model_from_config(model_config, devices, FLAGS.dropout)
 
     else:
+        print("Creating transfer model from config %s" % FLAGS.transfer_model_config)
+        with open(FLAGS.transfer_model_config, 'rb') as f:
+            transfer_model_config = pickle.load(f)
+        transfer_model = model_from_config(transfer_model_config, devices[0:1])
 
-        if FLAGS.transfer_model_config is None:
-            vocab, _, _ = load_vocab(os.path.join(FLAGS.data, "document.vocab"))
-            if FLAGS.max_vocab < 0:
-                FLAGS.max_vocab = len(vocab)
-            transfer_model = CharWordEmbedder(FLAGS.size, vocab, devices[0])
-        else:
-            print("Creating transfer model from config %s" % FLAGS.transfer_model_config)
-            with open(FLAGS.transfer_model_config, 'rb') as f:
-                transfer_model_config = pickle.load(f)
-
-            if FLAGS.transfer_qa:
-                transfer_model = model_from_config(transfer_model_config, devices[0:1])
-            else:
-                transfer_model = model_from_config(transfer_model_config, devices[0:1])
+        if FLAGS.with_chars:
+            print("Use additional char-based word-embedder")
+            char_embedder = CharWordEmbedder(FLAGS.size, transfer_model.vocab, devices[0])
+            FLAGS.embedder_lr = FLAGS.learning_rate
+            embedder = ConcatEmbedder([transfer_model, char_embedder])
 
         print("Creating model of type %s..." % FLAGS.model_type)
         if FLAGS.model_type == "qa_pointer":
