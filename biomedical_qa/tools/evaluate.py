@@ -105,6 +105,9 @@ def bioasq_evaluation(sampler, inferrer):
                 # We can't apply an absolute threshold, so use a fixed count.
                 answers = answers[:FLAGS.list_answer_count]
 
+            if FLAGS.verbose:
+                print("  Using answers:", [a for a, _ in answers])
+
             list_total += 1
             answer_correct = np.zeros([len(answers)], dtype=np.bool)
 
