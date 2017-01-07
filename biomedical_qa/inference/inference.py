@@ -18,12 +18,20 @@ class InferenceResult(object):
         self.question = question
 
 
+    def __iter__(self):
+
+        return zip(self.answer_strings, self.answer_probs)
+
+
 class Inferrer(object):
 
 
     def __init__(self, model_config_file, devices, beam_size,
                  model_weights_file=None,
                  start_output_unit="softmax"):
+
+        # If true, each start has its own probability to allow for multiple starts
+        self.unnormalized_probs = start_output_unit == "sigmoid"
 
         print("Loading Model...")
         with open(model_config_file, 'rb') as f:
@@ -93,7 +101,10 @@ class Inferrer(object):
             else:
                 # Duplicate mentions should add their probs
                 index = answer2index[answer.lower()]
-                filtered_probs[index] += prob
+                if self.unnormalized_probs:
+                    filtered_probs[index] = max(filtered_probs[index], prob)
+                else:
+                    filtered_probs[index] += prob
 
         # Sort by new probability
         answers_probs = list(zip(answers, filtered_probs))

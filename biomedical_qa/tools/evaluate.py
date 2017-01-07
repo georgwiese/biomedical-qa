@@ -28,6 +28,8 @@ tf.app.flags.DEFINE_integer("batch_size", 32, "Number of examples in each batch.
 tf.app.flags.DEFINE_integer("subsample", -1, "Number of samples to do the evaluation on.")
 
 tf.app.flags.DEFINE_integer("beam_size", 5, "Beam size used for decoding.")
+tf.app.flags.DEFINE_float("list_answer_prob_threshold", 0.5, "Probability threshold to include answers to list questions. Used start output unit is sigmoid.")
+tf.app.flags.DEFINE_integer("list_answer_count", 5, "Number of answers to list questions. Used start output unit is softmax.")
 
 tf.app.flags.DEFINE_boolean("squad_evaluation", False, "If true, measures F1 and exact match acc on answer spans.")
 tf.app.flags.DEFINE_boolean("bioasq_evaluation", False, "If true, runs BioASQ evaluation measures.")
@@ -63,7 +65,7 @@ def bioasq_evaluation(sampler, inferrer):
         correct_answers = ensure_list_depth_2(correct_answers)
         question_type = question.q_type
 
-        answers = prediction.answer_strings[:5]
+        answers = list(prediction)
 
         if FLAGS.verbose:
             print("-------------")
@@ -78,14 +80,14 @@ def bioasq_evaluation(sampler, inferrer):
             for correct_answer in correct_answers[0]:
                 # Compute exact match
                 if not exact_math_found and \
-                        answers[0].lower() == correct_answer.lower():
+                        answers[0][0].lower() == correct_answer.lower():
                     if FLAGS.verbose:
                         print("  Correct!")
                     factoid_correct += 1
                     exact_math_found = True
                 # Compute rank
                 for k in range(min(len(answers), 5)):
-                    if answers[k].lower() == correct_answer.lower():
+                    if answers[k][0].lower() == correct_answer.lower():
                         rank = min(rank, k + 1)
 
             if FLAGS.verbose:
@@ -94,6 +96,15 @@ def bioasq_evaluation(sampler, inferrer):
 
 
         if question_type == "list":
+
+            if FLAGS.start_output_unit == "sigmoid":
+                # We get individual probabilities for each answer, can threshold.
+                answers = [(a, prob) for a, prob in answers
+                           if prob >= FLAGS.list_answer_prob_threshold]
+            else:
+                # We can't apply an absolute threshold, so use a fixed count.
+                answers = answers[:FLAGS.list_answer_count]
+
             list_total += 1
             answer_correct = np.zeros([len(answers)], dtype=np.bool)
 
@@ -103,7 +114,7 @@ def bioasq_evaluation(sampler, inferrer):
 
                         # Count answer if it hasn't yet been counted as correct.
                         if not answer_correct[k] and \
-                                answers[k].lower() == correct_answer.lower():
+                                answers[k][0].lower() == correct_answer.lower():
                             answer_correct[k] = True
                             # Only count one synonym.
                             break
