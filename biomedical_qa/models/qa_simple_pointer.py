@@ -140,6 +140,9 @@ class QASimplePointerModel(ExtractionQAModel):
                                                         self.context_length,
                                                         dtype=tf.float32, time_major=False, scope="forward")[0]
 
+            # No matching layer, so set matched_output to encoded_ctxt (for compatibility)
+            self.matched_output = self.encoded_ctxt
+
             with tf.variable_scope("pointer_layer"):
                 self.predicted_context_indices, \
                 self._start_scores, self._start_pointer, self.start_probs, \
