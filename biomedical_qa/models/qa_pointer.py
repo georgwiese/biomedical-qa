@@ -17,7 +17,7 @@ class QAPointerModel(ExtractionQAModel):
     def __init__(self, size, transfer_model, keep_prob=1.0, transfer_layer_size=None,
                  composition="GRU", devices=None, name="QAPointerModel", depends_on=[],
                  answer_layer_depth=1, answer_layer_poolsize=8,
-                 answer_layer_type="dpn"):
+                 answer_layer_type="dpn", start_output_unit="softmax"):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1 % len(devices)] if devices is not None else "/cpu:0"
@@ -27,6 +27,8 @@ class QAPointerModel(ExtractionQAModel):
         self._answer_layer_depth = answer_layer_depth
         self._answer_layer_poolsize = answer_layer_poolsize
         self._answer_layer_type = answer_layer_type
+        self.start_output_unit = start_output_unit
+        assert start_output_unit in ["softmax", "sigmoid"]
 
         ExtractionQAModel.__init__(self, size, transfer_model, keep_prob, name)
 
@@ -167,7 +169,10 @@ class QAPointerModel(ExtractionQAModel):
             start_scores = hmn(question_state, context_states,
                                self.context_length)
             contexts, starts = tfutil.segment_argmax(start_scores, self.context_partition)
-            start_probs = tfutil.segment_softmax(start_scores, self.context_partition)
+            if self.start_output_unit == "softmax":
+                start_probs = tfutil.segment_softmax(start_scores, self.context_partition)
+            else:
+                start_probs = tf.sigmoid(start_scores)
 
         # From now on, answer_context_indices need to be fed.
         # There will be an end pointer prediction for each start pointer.
@@ -239,6 +244,7 @@ class QAPointerModel(ExtractionQAModel):
         config["answer_layer_depth"] = self._answer_layer_depth
         config["answer_layer_poolsize"] = self._answer_layer_poolsize
         config["answer_layer_type"] = self._answer_layer_type
+        config["start_output_unit"] = self.start_output_unit
         return config
 
     @staticmethod
@@ -256,6 +262,8 @@ class QAPointerModel(ExtractionQAModel):
             config["answer_layer_poolsize"] = 8
         if "answer_layer_type" not in config:
             config["answer_layer_type"] = "dpn"
+        if "start_output_unit" not in config:
+            config["start_output_unit"] = "softmax"
 
         from biomedical_qa.models import model_from_config
         transfer_model = model_from_config(config["transfer_model"], devices)
@@ -270,6 +278,7 @@ class QAPointerModel(ExtractionQAModel):
             devices=devices,
             answer_layer_depth=config["answer_layer_depth"],
             answer_layer_poolsize=config["answer_layer_poolsize"],
-            answer_layer_type=config["answer_layer_type"])
+            answer_layer_type=config["answer_layer_type"],
+            start_output_unit=config["start_output_unit"])
 
         return qa_model

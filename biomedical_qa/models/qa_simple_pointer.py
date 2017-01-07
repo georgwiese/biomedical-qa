@@ -12,7 +12,8 @@ from biomedical_qa.models.rnn_cell import LayerNormGRUCell, LayerNormLSTMCell, G
 class QASimplePointerModel(ExtractionQAModel):
 
     def __init__(self, size, embedder, keep_prob=1.0, composition="LSTM", devices=None, name="QASimplePointerModel",
-                 with_features=True, num_intrafusion_layers=1, with_inter_fusion=True, layer_norm=False):
+                 with_features=True, num_intrafusion_layers=1, with_inter_fusion=True, layer_norm=False,
+                 start_output_unit="softmax"):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1%len(devices)] if devices is not None else "/cpu:0"
@@ -20,6 +21,8 @@ class QASimplePointerModel(ExtractionQAModel):
         self._with_features = with_features
         self._with_inter_fusion = with_inter_fusion
         self._layer_norm = layer_norm
+        self.start_output_unit = start_output_unit
+        assert start_output_unit in ["softmax", "sigmoid"]
         ExtractionQAModel.__init__(self, size, embedder, keep_prob, name)
 
     def _init(self):
@@ -226,7 +229,10 @@ class QASimplePointerModel(ExtractionQAModel):
         start_scores = start_scores + self.context_mask
 
         contexts, starts = tfutil.segment_argmax(start_scores, self.context_partition)
-        start_probs = tfutil.segment_softmax(start_scores, self.context_partition)
+        if self.start_output_unit == "softmax":
+            start_probs = tfutil.segment_softmax(start_scores, self.context_partition)
+        else:
+            start_probs = tf.sigmoid(start_scores)
 
         # From now on, answer_context_indices need to be fed.
         # There will be an end pointer prediction for each start pointer.
@@ -308,6 +314,7 @@ class QASimplePointerModel(ExtractionQAModel):
         config["num_intrafusion_layers"] = self._num_intrafusion_layers
         config["layer_norm"] = self._layer_norm
         config["composition"] = self._composition
+        config["start_output_unit"] = self.start_output_unit
         return config
 
 
@@ -317,6 +324,10 @@ class QASimplePointerModel(ExtractionQAModel):
         :param config: dictionary of parameters for creating an autoreader
         :return:
         """
+
+        if "start_output_unit" not in config:
+            config["start_output_unit"] = "softmax"
+
         from biomedical_qa.models import model_from_config
         embedder = model_from_config(config["transfer_model"], devices)
         qa_model = QASimplePointerModel(
@@ -329,7 +340,8 @@ class QASimplePointerModel(ExtractionQAModel):
             with_features=config["with_features"],
             with_inter_fusion=config["with_inter_fusion"],
             num_intrafusion_layers=config["num_intrafusion_layers"],
-            layer_norm=config.get("layer_norm", False))
+            layer_norm=config.get("layer_norm", False),
+            start_output_unit=config["start_output_unit"])
 
         return qa_model
 

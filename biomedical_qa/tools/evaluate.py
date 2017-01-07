@@ -18,8 +18,6 @@ tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
 tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 
-tf.app.flags.DEFINE_string("start_output_unit", "softmax", "[softmax, sigmoid].")
-
 tf.app.flags.DEFINE_boolean("is_bioasq", False, "Whether the provided dataset is a BioASQ json.")
 tf.app.flags.DEFINE_boolean("bioasq_include_synonyms", False, "Whether BioASQ synonyms should be included.")
 tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for BioASQ contexts.")
@@ -97,7 +95,7 @@ def bioasq_evaluation(sampler, inferrer):
 
         if question_type == "list":
 
-            if FLAGS.start_output_unit == "sigmoid":
+            if inferrer.model.start_output_unit == "sigmoid":
                 # We get individual probabilities for each answer, can threshold.
                 answers = [(a, prob) for a, prob in answers
                            if prob >= FLAGS.list_answer_prob_threshold]
@@ -131,7 +129,7 @@ def bioasq_evaluation(sampler, inferrer):
                 f1 = 0
 
             if FLAGS.verbose:
-                print("F1: %f" % f1)
+                print("F1: %f, precision: %f, recall: %f" % (f1, precision, recall))
             list_f1_sum += f1
 
     print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
@@ -143,7 +141,7 @@ def main():
     devices = FLAGS.devices.split(",")
 
     inferrer = Inferrer(FLAGS.model_config, devices, FLAGS.beam_size,
-                        FLAGS.model_weights, FLAGS.start_output_unit)
+                        FLAGS.model_weights)
 
     print("Initializing Sampler & Trainer...")
     data_dir = os.path.dirname(FLAGS.eval_data)
@@ -164,8 +162,7 @@ def main():
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
-        trainer = ExtractionQATrainer(0, inferrer.model, devices[0],
-                                      start_output_unit=FLAGS.start_output_unit)
+        trainer = ExtractionQATrainer(0, inferrer.model, devices[0])
         trainer.eval(inferrer.sess, sampler, verbose=True)
 
     if FLAGS.bioasq_evaluation:

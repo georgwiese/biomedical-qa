@@ -27,16 +27,15 @@ class Inferrer(object):
 
 
     def __init__(self, model_config_file, devices, beam_size,
-                 model_weights_file=None,
-                 start_output_unit="softmax"):
-
-        # If true, each start has its own probability to allow for multiple starts
-        self.unnormalized_probs = start_output_unit == "sigmoid"
+                 model_weights_file=None):
 
         print("Loading Model...")
         with open(model_config_file, 'rb') as f:
             model_config = pickle.load(f)
         self.model = model_from_config(model_config, devices)
+
+        # If true, each start has its own probability to allow for multiple starts
+        self.unnormalized_probs = self.model.start_output_unit == "sigmoid"
 
         print("Restoring Weights...")
         config = tf.ConfigProto(allow_soft_placement=True)
@@ -53,8 +52,7 @@ class Inferrer(object):
         self.model.set_eval(self.sess)
 
         self.beam_search_decoder = BeamSearchDecoder(self.sess, self.model,
-                                                     beam_size,
-                                                     start_output_unit)
+                                                     beam_size)
 
 
     def get_predictions(self, sampler):

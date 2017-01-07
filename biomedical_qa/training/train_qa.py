@@ -141,14 +141,16 @@ with tf.Session(config=config) as sess:
                                          keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
                                          answer_layer_depth=FLAGS.answer_layer_depth,
                                          answer_layer_poolsize=FLAGS.answer_layer_poolsize,
-                                         answer_layer_type=FLAGS.answer_layer_type)
+                                         answer_layer_type=FLAGS.answer_layer_type,
+                                         start_output_unit=FLAGS.start_output_unit)
         elif FLAGS.model_type == "qa_simple_pointer":
             with_inter_fusion = FLAGS.with_fusion
             num_intrafusion_layers = 1 if FLAGS.with_fusion else 0
             model = QASimplePointerModel(FLAGS.size, transfer_model, devices=devices,
                                          keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
                                          num_intrafusion_layers=num_intrafusion_layers,
-                                         with_inter_fusion=with_inter_fusion)
+                                         with_inter_fusion=with_inter_fusion,
+                                         start_output_unit=FLAGS.start_output_unit)
         else:
             raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 
@@ -167,8 +169,7 @@ with tf.Session(config=config) as sess:
         test_sampler = SQuADSampler(FLAGS.data, test_fns, FLAGS.batch_size, model.transfer_model.vocab, FLAGS.max_instances)
 
     trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
-                                  train_variable_prefixes=train_variable_prefixes,
-                                  start_output_unit=FLAGS.start_output_unit)
+                                  train_variable_prefixes=train_variable_prefixes)
 
     print("Created %s!" % type(model).__name__)
 

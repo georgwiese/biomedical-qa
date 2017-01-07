@@ -13,12 +13,9 @@ SIGMOID_NEGATIVE_SAMPLES = -1
 
 class ExtractionQATrainer(Trainer):
 
-    def __init__(self, learning_rate, model, device, train_variable_prefixes=[],
-                 start_output_unit="softmax"):
+    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
         self._train_variable_prefixes = train_variable_prefixes
-        self._start_output_unit = start_output_unit
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
-        assert self._start_output_unit in ["softmax", "sigmoid"]
         Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
@@ -37,12 +34,12 @@ class ExtractionQATrainer(Trainer):
         model = self.model
         self._opt = tf.train.AdamOptimizer(self.learning_rate)
 
-        if self._start_output_unit == "softmax":
+        if model.start_output_unit == "softmax":
             start_loss = self.softmax_start_loss(model)
-        elif self._start_output_unit == "sigmoid":
+        elif model.start_output_unit == "sigmoid":
             start_loss = self.sigmoid_start_loss(model)
         else:
-            raise ValueError("Unknown start output unit: %s" % self._start_output_unit)
+            raise ValueError("Unknown start output unit: %s" % model._start_output_unit)
 
         end_loss = self.end_loss(model)
         self._loss = self.reduce_per_answer_loss(start_loss + end_loss)
