@@ -130,7 +130,7 @@ class ExtractionQAModel(QAModel):
 
     @property
     def sigmoid_start_probs(self):
-        return tf.sigmoid(self.start_scores())
+        return tf.sigmoid(self.start_scores)
 
     @property
     def end_scores(self):
