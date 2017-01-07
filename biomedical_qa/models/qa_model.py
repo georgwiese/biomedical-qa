@@ -129,7 +129,7 @@ class ExtractionQAModel(QAModel):
         raise NotImplementedError()
 
     @property
-    def sigmoid_start_scores(self):
+    def sigmoid_start_probs(self):
         return tf.sigmoid(self.start_scores())
 
     @property
