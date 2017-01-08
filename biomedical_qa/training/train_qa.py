@@ -60,7 +60,7 @@ tf.app.flags.DEFINE_integer("random_seed", 1234, "Seed for rng.")
 tf.app.flags.DEFINE_integer("min_epochs", 1, "Minimum number of epochs.")
 tf.app.flags.DEFINE_string("save_dir", "save/" + time.strftime("%d%m%Y_%H%M%S", time.localtime()),
                            "Where to save model and its configuration, always last will be kept.")
-tf.app.flags.DEFINE_string("init_model_path", None, "Path to model to initialize from.")
+tf.app.flags.DEFINE_string("init_model_path", None, "Path to model to initialize from, or 'latest' if model_config is used.")
 tf.app.flags.DEFINE_string("embeddings", None, "Init with word embeddings from given path in w2v binary format.")
 tf.app.flags.DEFINE_integer("max_context_length", 300, "Maximum length of context.")
 tf.app.flags.DEFINE_integer("max_vocab", -1, "Maximum vocab size if no embedder is given.")
@@ -183,8 +183,12 @@ with tf.Session(config=config) as sess:
 
     latest_checkpoint = tf.train.latest_checkpoint(train_dir)
     if FLAGS.init_model_path:
-        print("Loading from path " + FLAGS.init_model_path)
-        trainer.model.model_saver.restore(sess, FLAGS.init_model_path)
+        init_model_path = FLAGS.init_model_path
+        if FLAGS.init_model_path == "latest":
+            assert FLAGS.model_config is not None, "Provide model_config to use latest checkpoint."
+            init_model_path = tf.train.latest_checkpoint(os.path.dirname(FLAGS.model_config))
+        print("Loading from path " + init_model_path)
+        trainer.model.model_saver.restore(sess, init_model_path)
     elif latest_checkpoint is not None:
         print("Loading from checkpoint " + latest_checkpoint)
         trainer.all_saver.restore(sess, latest_checkpoint)
