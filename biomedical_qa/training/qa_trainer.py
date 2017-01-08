@@ -70,9 +70,11 @@ class ExtractionQATrainer(Trainer):
         self.f1 = tf.segment_max(f1_per_answer, self.question_partition)
         self.mean_f1 = tf.reduce_mean(self.f1)
 
-        pointers_equal = tf.logical_and(tf.equal(start_pointer, self.answer_starts),
-                                        tf.equal(end_pointer, self.answer_ends))
-        spans_equal = tf.logical_and(contexts_equal, pointers_equal)
+        starts_equal = tf.logical_and(tf.equal(start_pointer, self.answer_starts),
+                                      contexts_equal)
+        ends_equal = tf.logical_and(tf.equal(end_pointer, self.answer_ends),
+                                    contexts_equal)
+        spans_equal = tf.logical_and(starts_equal, ends_equal)
         self.exact_matches = tf.segment_max(tf.cast(spans_equal, tf.int32),
                                             self.question_partition)
 
@@ -98,8 +100,13 @@ class ExtractionQATrainer(Trainer):
             tf.scalar_summary("loss", self._loss)
             tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss))
             tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss))
+
             tf.scalar_summary("train_f1_mean", self.mean_f1)
             tf.histogram_summary("train_f1", self.f1)
+            tf.scalar_summary("correct_starts",
+                              tf.reduce_sum(tf.cast(starts_equal, tf.int32)))
+            tf.scalar_summary("correct_ends",
+                              tf.reduce_sum(tf.cast(ends_equal, tf.int32)))
 
     def reduce_per_answer_loss(self, loss):
 
@@ -147,6 +154,10 @@ class ExtractionQATrainer(Trainer):
                                                model.context_partition)
         # Now, expand to [len(answers)] shape to match correct_start_loss
         incorrect_start_loss = tf.gather(incorrect_start_loss, self.question_partition)
+
+        with tf.name_scope("summaries"):
+            tf.scalar_summary("sigmoid_correct_start_loss", tf.reduce_mean(correct_start_loss))
+            tf.scalar_summary("sigmoid_incorrect_start_loss", tf.reduce_mean(incorrect_start_loss))
 
         return correct_start_loss + incorrect_start_loss
 
