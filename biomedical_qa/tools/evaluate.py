@@ -1,5 +1,6 @@
 import os
 import tensorflow as tf
+import numpy as np
 
 from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.sampling.bioasq import BioAsqSampler
@@ -26,9 +27,38 @@ tf.app.flags.DEFINE_integer("list_answer_count", 5, "Number of answers to list q
 
 tf.app.flags.DEFINE_boolean("squad_evaluation", False, "If true, measures F1 and exact match acc on answer spans.")
 tf.app.flags.DEFINE_boolean("bioasq_evaluation", False, "If true, runs BioASQ evaluation measures.")
+tf.app.flags.DEFINE_boolean("find_optimal_threshold", False, "If true, will find the threshold which optimizes list performance.")
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
 
+tf.app.flags.DEFINE_float("threshold_search_step", 0.01, "Step size to use for threshold search.")
+
 FLAGS = tf.app.flags.FLAGS
+
+
+def find_optimal_threshold(evaluator):
+
+    print("Doing predictions...")
+    predictions = evaluator.inferrer.get_predictions(evaluator.sampler)
+
+    max_f1 = -1
+    max_threshold = -1
+
+    print("Trying thresholds...")
+
+    for threshold in np.arange(0.0, 1.0, FLAGS.threshold_search_step):
+
+        _, _, f1 = evaluator.evaluation_for_predictions(predictions,
+                                                        list_answer_prob_threshold=threshold)
+
+        if FLAGS.verbose:
+            print("%f\t%f1" % (threshold, f1))
+
+        if f1 > max_f1:
+            max_f1 = f1
+            max_threshold = threshold
+
+    print("Found best threshold: %f (F1: %f)" % (max_threshold, max_f1))
+
 
 
 def main():
@@ -65,5 +95,18 @@ def main():
         evaluator.bioasq_evaluation(verbosity_level=2 if FLAGS.verbose else 1,
                                     list_answer_count=FLAGS.list_answer_count,
                                     list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
+
+    if FLAGS.find_optimal_threshold:
+        assert FLAGS.is_bioasq
+
+        sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
+                                inferrer.model.embedder.vocab,
+                                types=["list"],
+                                instances_per_epoch=instances, shuffle=False,
+                                split_contexts_on_newline=FLAGS.split_contexts,
+                                context_token_limit=FLAGS.bioasq_context_token_limit,
+                                include_synonyms=FLAGS.bioasq_include_synonyms)
+        evaluator = BioAsqEvaluator(sampler, inferrer)
+        find_optimal_threshold(evaluator)
 
 main()

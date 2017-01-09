@@ -19,10 +19,8 @@ class BioAsqEvaluator(object):
         if self.inferrer.beam_size < 5:
             logging.warning("Beam size should be at least 5 in order to get 5 ranked answers.")
 
-        questions = self.sampler.get_questions()
-
         # Assuming one question per paragraph
-        count = len(questions)
+        count = len(self.sampler.get_questions())
         subsample = self.sampler.instances_per_epoch
         print("  (Questions: %d, using %d)" %
               (count, subsample if subsample is not None else count))
@@ -31,12 +29,12 @@ class BioAsqEvaluator(object):
           print("  Doing predictions...")
         predictions = self.inferrer.get_predictions(self.sampler)
 
-        return self.evaluation_for_predictions(predictions, questions,
+        return self.evaluation_for_predictions(predictions,
                                                verbosity_level,
                                                list_answer_count,
                                                list_answer_prob_threshold)
 
-    def evaluation_for_predictions(self, predictions, questions,
+    def evaluation_for_predictions(self, predictions,
                                    verbosity_level=0,
                                    list_answer_count=5,
                                    list_answer_prob_threshold=0.5):
@@ -45,7 +43,7 @@ class BioAsqEvaluator(object):
         factoid_reciprocal_rank_sum = 0
         list_f1_sum, list_total = 0, 0
 
-        for question in questions:
+        for question in self.sampler.get_questions():
 
             prediction = predictions[question.id]
 
@@ -92,9 +90,9 @@ class BioAsqEvaluator(object):
                     print("F1: %f, precision: %f, recall: %f" % (f1, precision, recall))
                 list_f1_sum += f1
 
-        factoid_acc = factoid_correct / factoid_total
-        factoid_mrr = factoid_reciprocal_rank_sum / factoid_total
-        list_f1 = list_f1_sum / list_total
+        factoid_acc = factoid_correct / factoid_total if factoid_total else 0
+        factoid_mrr = factoid_reciprocal_rank_sum / factoid_total if factoid_total else 0
+        list_f1 = list_f1_sum / list_total if list_total else 0
 
         if verbosity_level > 0:
             print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
