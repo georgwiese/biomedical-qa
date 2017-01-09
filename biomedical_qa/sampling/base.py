@@ -12,7 +12,7 @@ class BaseSampler:
         self.start_id = vocab["<S>"]
         self.end_id = vocab["</S>"]
         self.vocab = vocab
-        self._instances_per_epoch = instances_per_epoch
+        self.instances_per_epoch = instances_per_epoch
         self.num_batches = 0
         self.epoch = 0
         self._rng = random.Random(28739)

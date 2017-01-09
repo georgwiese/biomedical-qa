@@ -29,6 +29,8 @@ class Inferrer(object):
     def __init__(self, model_config_file, devices, beam_size,
                  model_weights_file=None):
 
+        self.beam_size = beam_size
+
         print("Loading Model...")
         with open(model_config_file, 'rb') as f:
             model_config = pickle.load(f)
