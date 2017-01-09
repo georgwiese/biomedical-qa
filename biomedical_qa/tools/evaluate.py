@@ -5,7 +5,7 @@ from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer
-from biomedical_qa.evaluation.bioasq_evaluation import bioasq_evaluation
+from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 
 tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file.')
 tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts on newline.')
@@ -61,9 +61,9 @@ def main():
 
     if FLAGS.bioasq_evaluation:
         print("Running BioASQ Evaluation...")
-        bioasq_evaluation(sampler, inferrer,
-                          verbosity_level=2 if FLAGS.verbose else 1,
-                          list_answer_count=FLAGS.list_answer_count,
-                          list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
+        evaluator = BioAsqEvaluator(sampler, inferrer)
+        evaluator.bioasq_evaluation(verbosity_level=2 if FLAGS.verbose else 1,
+                                    list_answer_count=FLAGS.list_answer_count,
+                                    list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
 
 main()
