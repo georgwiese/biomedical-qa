@@ -3,6 +3,8 @@ import tensorflow as tf
 import numpy as np
 
 from biomedical_qa import tfutil
+from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
+from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.models.crf import crf_log_likelihood
 from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import Trainer
@@ -250,3 +252,44 @@ class ExtractionQATrainer(Trainer):
 
     def run(self, sess, goal, qa_settings):
         return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings))
+
+
+class BioAsqQATrainer(ExtractionQATrainer):
+    """Overwrite eval() Method to optimize BioASQ measures."""
+
+
+    def __init__(self, learning_rate, model, device, train_variable_prefixes=[],
+                 beam_size=10, list_answer_count=5):
+
+        self._beam_size = beam_size
+        self._list_answer_count = list_answer_count
+        ExtractionQATrainer.__init__(self, learning_rate, model, device,
+                                     train_variable_prefixes)
+
+
+    def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
+
+        if subsample > 0 or after_batch_hook is not None:
+            raise NotImplementedError()
+
+        inferrer = Inferrer(self.model, sess, self._beam_size)
+        evaluator = BioAsqEvaluator(sampler, inferrer)
+
+        list_threshold = evaluator.find_optimal_threshold(0.001)
+        _, factoid_mrr, list_f1 = evaluator.evaluate(list_answer_prob_threshold=list_threshold,
+                                                     list_answer_count=self._list_answer_count)
+
+        performance = (factoid_mrr + list_f1) / 2
+
+        if verbose:
+            print("MRR: %.3f, F1: %.3f -> performance: %.3f" %
+                  (factoid_mrr, list_f1, performance))
+
+
+        summary = tf.Summary()
+        summary.value.add(tag="valid_mrr", simple_value=factoid_mrr)
+        summary.value.add(tag="valid_list_f1", simple_value=list_f1)
+        summary.value.add(tag="valid_performance", simple_value=performance)
+
+        return performance, summary
+

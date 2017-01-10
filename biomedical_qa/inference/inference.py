@@ -23,34 +23,41 @@ class InferenceResult(object):
         return zip(self.answer_strings, self.answer_probs)
 
 
+def get_model_and_session(model_config_file, devices, model_weights_file=None):
+
+
+    print("Loading Model...")
+    with open(model_config_file, 'rb') as f:
+        model_config = pickle.load(f)
+    model = model_from_config(model_config, devices)
+
+    if model_weights_file is None:
+        train_dir = os.path.dirname(model_config_file)
+        model_weights_file = tf.train.latest_checkpoint(train_dir)
+        print("Using weights: %s" % model_weights_file)
+
+    print("Restoring Weights...")
+    config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
+    sess = tf.Session(config=config)
+    sess.run(tf.global_variables_initializer())
+    model.model_saver.restore(sess, model_weights_file)
+
+    return model, sess
+
+
 class Inferrer(object):
 
 
-    def __init__(self, model_config_file, devices, beam_size,
-                 model_weights_file=None):
+    def __init__(self, model, sess, beam_size):
 
+        self.model = model
+        self.sess = sess
         self.beam_size = beam_size
-
-        print("Loading Model...")
-        with open(model_config_file, 'rb') as f:
-            model_config = pickle.load(f)
-        self.model = model_from_config(model_config, devices)
 
         # If true, each start has its own probability to allow for multiple starts
         self.unnormalized_probs = self.model.start_output_unit == "sigmoid"
 
-        print("Restoring Weights...")
-        config = tf.ConfigProto(allow_soft_placement=True)
-        config.gpu_options.allow_growth = True
-
-        if model_weights_file is None:
-            train_dir = os.path.dirname(model_config_file)
-            model_weights_file = tf.train.latest_checkpoint(train_dir)
-            print("Using weights: %s" % model_weights_file)
-
-        self.sess = tf.Session(config=config)
-        self.sess.run(tf.global_variables_initializer())
-        self.model.model_saver.restore(self.sess, model_weights_file)
         self.model.set_eval(self.sess)
 
         self.beam_search_decoder = BeamSearchDecoder(self.sess, self.model,

@@ -13,7 +13,8 @@ from biomedical_qa.models.qa_pointer import QAPointerModel
 from biomedical_qa.models.qa_simple_pointer import QASimplePointerModel
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
-from biomedical_qa.training.qa_trainer import ExtractionQATrainer
+from biomedical_qa.training.qa_trainer import ExtractionQATrainer, \
+    BioAsqQATrainer
 
 from biomedical_qa.util import load_vocab
 
@@ -163,8 +164,12 @@ with tf.Session(config=config) as sess:
         print("Test sets: (first 100)", test_fns[:100])
         test_sampler = SQuADSampler(FLAGS.data, test_fns, FLAGS.batch_size, model.transfer_model.vocab, FLAGS.max_instances)
 
-    trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
+    if FLAGS.is_bioasq:
+        trainer = BioAsqQATrainer(FLAGS.learning_rate, model, devices[0],
                                   train_variable_prefixes=train_variable_prefixes)
+    else:
+        trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
+                                      train_variable_prefixes=train_variable_prefixes)
 
     print("Created %s!" % type(model).__name__)
 

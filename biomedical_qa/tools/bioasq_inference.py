@@ -4,7 +4,7 @@ import os
 import tensorflow as tf
 
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
-from biomedical_qa.inference.inference import Inferrer
+from biomedical_qa.inference.inference import Inferrer, get_model_and_session
 from biomedical_qa.sampling.squad import SQuADSampler
 
 tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
@@ -53,8 +53,9 @@ if __name__ == "__main__":
 
     devices = FLAGS.devices.split(",")
 
-    inferrer = Inferrer(FLAGS.model_config, devices, FLAGS.beam_size,
-                        FLAGS.model_weights)
+    model, sess = get_model_and_session(FLAGS.model_config, devices,
+                                        FLAGS.model_weights)
+    inferrer = Inferrer(model, sess, FLAGS.beam_size)
 
     # Build sampler from dataset JSON
     bioasq_json, squad_json = load_dataset(FLAGS.bioasq_file)
