@@ -45,7 +45,7 @@ class BioAsqEvaluator(object):
             _, _, f1, precision, recall = self.evaluate(list_answer_prob_threshold=threshold)
 
             if verbosity_level > 1:
-                print("%f\t%f1\t%f\%f" % (threshold, f1, precision, recall))
+                print("%f\t%f1\t%f\t%f" % (threshold, f1, precision, recall))
 
             if f1 > best_f1:
                 best_f1 = f1
