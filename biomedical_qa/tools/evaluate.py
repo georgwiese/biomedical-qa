@@ -35,31 +35,6 @@ tf.app.flags.DEFINE_float("threshold_search_step", 0.01, "Step size to use for t
 FLAGS = tf.app.flags.FLAGS
 
 
-def find_optimal_threshold(evaluator):
-
-    print("Doing predictions...")
-    predictions = evaluator.inferrer.get_predictions(evaluator.sampler)
-
-    max_f1 = -1
-    max_threshold = -1
-
-    print("Trying thresholds...")
-
-    for threshold in np.arange(0.0, 1.0, FLAGS.threshold_search_step):
-
-        _, _, f1 = evaluator.evaluation_for_predictions(predictions,
-                                                        list_answer_prob_threshold=threshold)
-
-        if FLAGS.verbose:
-            print("%f\t%f1" % (threshold, f1))
-
-        if f1 > max_f1:
-            max_f1 = f1
-            max_threshold = threshold
-
-    print("Found best threshold: %f (F1: %f)" % (max_threshold, max_f1))
-
-
 
 def main():
     devices = FLAGS.devices.split(",")
@@ -92,9 +67,9 @@ def main():
     if FLAGS.bioasq_evaluation:
         print("Running BioASQ Evaluation...")
         evaluator = BioAsqEvaluator(sampler, inferrer)
-        evaluator.bioasq_evaluation(verbosity_level=2 if FLAGS.verbose else 1,
-                                    list_answer_count=FLAGS.list_answer_count,
-                                    list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
+        evaluator.evaluate(verbosity_level=2 if FLAGS.verbose else 1,
+                           list_answer_count=FLAGS.list_answer_count,
+                           list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
 
     if FLAGS.find_optimal_threshold:
         assert FLAGS.is_bioasq
@@ -107,6 +82,7 @@ def main():
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
                                 include_synonyms=FLAGS.bioasq_include_synonyms)
         evaluator = BioAsqEvaluator(sampler, inferrer)
-        find_optimal_threshold(evaluator)
+        evaluator.find_optimal_threshold(FLAGS.threshold_search_step,
+                                         verbosity_level=2 if FLAGS.verbose else 1)
 
 main()

@@ -12,9 +12,55 @@ class BioAsqEvaluator(object):
 
         self.sampler = sampler
         self.inferrer = inferrer
+        self.predictions = None
 
 
-    def bioasq_evaluation(self, verbosity_level=0, list_answer_count=5, list_answer_prob_threshold=0.5):
+    def initialize_predictions_if_needed(self, verbosity_level=0):
+
+        if self.predictions is not None:
+            # Nothing to do
+            return
+
+        if verbosity_level > 0:
+            print("  Doing predictions...")
+
+        self.predictions = self.inferrer.get_predictions(self.sampler)
+
+        if verbosity_level > 0:
+            print("  Done.")
+
+
+    def find_optimal_threshold(self, threshold_search_step, verbosity_level=0):
+
+        self.initialize_predictions_if_needed(verbosity_level)
+
+        best_f1 = -1
+        best_threshold = -1
+
+        if verbosity_level > 0:
+            print("Trying thresholds...")
+
+        for threshold in np.arange(0.0, 1.0, threshold_search_step):
+
+            _, _, f1 = self.evaluate(list_answer_prob_threshold=threshold)
+
+            if verbosity_level > 1:
+                print("%f\t%f1" % (threshold, f1))
+
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = threshold
+
+        if verbosity_level > 0:
+            print("Found best threshold: %f (F1: %f)" % (best_threshold, best_f1))
+
+        return best_threshold, best_f1
+
+
+    def evaluate(self, verbosity_level=0, list_answer_count=5,
+                 list_answer_prob_threshold=0.5):
+
+        self.initialize_predictions_if_needed(verbosity_level)
 
         if self.inferrer.beam_size < 5:
             logging.warning("Beam size should be at least 5 in order to get 5 ranked answers.")
@@ -22,22 +68,9 @@ class BioAsqEvaluator(object):
         # Assuming one question per paragraph
         count = len(self.sampler.get_questions())
         subsample = self.sampler.instances_per_epoch
-        print("  (Questions: %d, using %d)" %
-              (count, subsample if subsample is not None else count))
-
         if verbosity_level > 0:
-          print("  Doing predictions...")
-        predictions = self.inferrer.get_predictions(self.sampler)
-
-        return self.evaluation_for_predictions(predictions,
-                                               verbosity_level,
-                                               list_answer_count,
-                                               list_answer_prob_threshold)
-
-    def evaluation_for_predictions(self, predictions,
-                                   verbosity_level=0,
-                                   list_answer_count=5,
-                                   list_answer_prob_threshold=0.5):
+            print("  (Questions: %d, using %d)" %
+                  (count, subsample if subsample is not None else count))
 
         factoid_correct, factoid_total = 0, 0
         factoid_reciprocal_rank_sum = 0
@@ -45,7 +78,7 @@ class BioAsqEvaluator(object):
 
         for question in self.sampler.get_questions():
 
-            prediction = predictions[question.id]
+            prediction = self.predictions[question.id]
 
             correct_answers = question.question_json["original_answers"]
             correct_answers = ensure_list_depth_2(correct_answers)
