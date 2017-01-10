@@ -28,6 +28,7 @@ tf.app.flags.DEFINE_integer("list_answer_count", 5, "Number of answers to list q
 tf.app.flags.DEFINE_boolean("squad_evaluation", False, "If true, measures F1 and exact match acc on answer spans.")
 tf.app.flags.DEFINE_boolean("bioasq_evaluation", False, "If true, runs BioASQ evaluation measures.")
 tf.app.flags.DEFINE_boolean("find_optimal_threshold", False, "If true, will find the threshold which optimizes list performance.")
+tf.app.flags.DEFINE_boolean("find_optimal_answer_count", False, "If true, will find the answer count which optimizes list performance.")
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
 
 tf.app.flags.DEFINE_float("threshold_search_step", 0.01, "Step size to use for threshold search.")
@@ -47,6 +48,8 @@ def main():
     data_dir = os.path.dirname(FLAGS.eval_data)
     data_filename = os.path.basename(FLAGS.eval_data)
     instances = FLAGS.subsample if FLAGS.subsample > 0 else None
+
+    list_sampler = None
     if not FLAGS.is_bioasq:
         sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
                                inferrer.model.embedder.vocab,
@@ -59,6 +62,15 @@ def main():
                                 split_contexts_on_newline=FLAGS.split_contexts,
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
                                 include_synonyms=FLAGS.bioasq_include_synonyms)
+
+
+        list_sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
+                                     inferrer.model.embedder.vocab,
+                                     types=["list"],
+                                     instances_per_epoch=instances, shuffle=False,
+                                     split_contexts_on_newline=FLAGS.split_contexts,
+                                     context_token_limit=FLAGS.bioasq_context_token_limit,
+                                     include_synonyms=FLAGS.bioasq_include_synonyms)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
@@ -73,17 +85,12 @@ def main():
                            list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
 
     if FLAGS.find_optimal_threshold:
-        assert FLAGS.is_bioasq
-
-        sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
-                                inferrer.model.embedder.vocab,
-                                types=["list"],
-                                instances_per_epoch=instances, shuffle=False,
-                                split_contexts_on_newline=FLAGS.split_contexts,
-                                context_token_limit=FLAGS.bioasq_context_token_limit,
-                                include_synonyms=FLAGS.bioasq_include_synonyms)
-        evaluator = BioAsqEvaluator(sampler, inferrer)
+        evaluator = BioAsqEvaluator(list_sampler, inferrer)
         evaluator.find_optimal_threshold(FLAGS.threshold_search_step,
                                          verbosity_level=2 if FLAGS.verbose else 1)
+
+    if FLAGS.find_optimal_answer_count:
+        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        evaluator.find_optimal_answer_count(verbosity_level=2 if FLAGS.verbose else 1)
 
 main()

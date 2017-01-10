@@ -57,6 +57,33 @@ class BioAsqEvaluator(object):
         return best_threshold, best_f1
 
 
+    def find_optimal_answer_count(self, verbosity_level=0):
+
+        self.initialize_predictions_if_needed(verbosity_level)
+
+        best_f1 = -1
+        best_answer_count = -1
+
+        if verbosity_level > 0:
+            print("Trying answer counts...")
+
+        for count in range(1, 20):
+
+            _, _, f1, precision, recall = self.evaluate(list_answer_count=count)
+
+            if verbosity_level > 1:
+                print("%d\t%f1\t%f\t%f" % (count, f1, precision, recall))
+
+            if f1 > best_f1:
+                best_f1 = f1
+                best_answer_count = count
+
+        if verbosity_level > 0:
+            print("Found best answer count: %d (F1: %f)" % (best_answer_count, best_f1))
+
+        return best_answer_count, best_f1
+
+
     def evaluate(self, verbosity_level=0, list_answer_count=5,
                  list_answer_prob_threshold=0.5):
 
