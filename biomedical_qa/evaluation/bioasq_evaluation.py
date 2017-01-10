@@ -42,10 +42,10 @@ class BioAsqEvaluator(object):
 
         for threshold in np.arange(0.0, 1.0, threshold_search_step):
 
-            _, _, f1 = self.evaluate(list_answer_prob_threshold=threshold)
+            _, _, f1, precision, recall = self.evaluate(list_answer_prob_threshold=threshold)
 
             if verbosity_level > 1:
-                print("%f\t%f1" % (threshold, f1))
+                print("%f\t%f1\t%f\%f" % (threshold, f1, precision, recall))
 
             if f1 > best_f1:
                 best_f1 = f1
@@ -74,7 +74,7 @@ class BioAsqEvaluator(object):
 
         factoid_correct, factoid_total = 0, 0
         factoid_reciprocal_rank_sum = 0
-        list_f1_sum, list_total = 0, 0
+        list_f1_sum, list_precision_sum, list_recall_sum, list_total = 0, 0, 0, 0
 
         for question in self.sampler.get_questions():
 
@@ -122,17 +122,21 @@ class BioAsqEvaluator(object):
                 if verbosity_level > 1:
                     print("F1: %f, precision: %f, recall: %f" % (f1, precision, recall))
                 list_f1_sum += f1
+                list_precision_sum += precision
+                list_recall_sum += recall
 
         factoid_acc = factoid_correct / factoid_total if factoid_total else 0
         factoid_mrr = factoid_reciprocal_rank_sum / factoid_total if factoid_total else 0
         list_f1 = list_f1_sum / list_total if list_total else 0
+        list_precision = list_precision_sum / list_total if list_total else 0
+        list_recall = list_recall_sum / list_total if list_total else 0
 
         if verbosity_level > 0:
             print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
             print("Factoid MRR: %f" % factoid_mrr)
             print("List mean F1: %f (%d Questions)" % (list_f1, list_total))
 
-        return factoid_acc, factoid_mrr, list_f1
+        return factoid_acc, factoid_mrr, list_f1, list_precision, list_recall
 
 
     def evaluate_factoid_question(self, answers, correct_answers):

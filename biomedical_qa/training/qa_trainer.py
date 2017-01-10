@@ -276,8 +276,8 @@ class BioAsqQATrainer(ExtractionQATrainer):
         evaluator = BioAsqEvaluator(sampler, inferrer)
 
         list_threshold, _ = evaluator.find_optimal_threshold(0.001)
-        _, factoid_mrr, list_f1 = evaluator.evaluate(list_answer_prob_threshold=list_threshold,
-                                                     list_answer_count=self._list_answer_count)
+        _, factoid_mrr, list_f1, _, _ = evaluator.evaluate(list_answer_prob_threshold=list_threshold,
+                                                           list_answer_count=self._list_answer_count)
 
         performance = (factoid_mrr + list_f1) / 2
 
