@@ -199,7 +199,12 @@ class ExtractionQATrainer(Trainer):
         exact = exact / total
         if verbose:
             print("")
-        return f1, exact
+
+        summary = tf.Summary()
+        summary.value.add(tag="valid_f1_mean", simple_value=f1)
+        summary.value.add(tag="valid_exact_mean", simple_value=exact)
+
+        return f1, summary
 
     def get_feed_dict(self, qa_settings):
         answer_context_indices = []

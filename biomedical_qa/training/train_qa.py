@@ -206,23 +206,19 @@ with tf.Session(config=config) as sess:
     best_path = []
     checkpoint_path = os.path.join(train_dir, "model.ckpt")
 
-    previous_loss = list()
+    previous_performances = list()
     epoch = 0
 
     def validate(global_step):
         # Run evals on development set and print(their perplexity.)
         print("########## Validation ##############")
-        f1, exact = trainer.eval(sess, valid_sampler, verbose=True)#, subsample=min(10000, FLAGS.batch_size * 100))
+        performance, summary = trainer.eval(sess, valid_sampler, verbose=True)
         print("####################################")
         trainer.model.set_train(sess)
 
-        dev_summary = tf.Summary()
-        dev_summary.value.add(tag="valid_f1_mean", simple_value=f1)
-        dev_summary.value.add(tag="valid_exact_mean", simple_value=exact)
-        dev_summary_writer.add_summary(dev_summary, global_step)
+        dev_summary_writer.add_summary(summary, global_step)
 
-        l = -f1
-        if not best_path or l < min(previous_loss):
+        if not best_path or performance > min(previous_performances):
             if best_path:
                 best_path[0] = trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step,
                                                       write_meta_graph=False)
@@ -230,15 +226,15 @@ with tf.Session(config=config) as sess:
                 best_path.append(
                     trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step, write_meta_graph=False))
 
-        if previous_loss and l > previous_loss[-1]:
+        if previous_performances and performance < previous_performances[-1]:
             print("Decaying learningrate.")
             lr = sess.run(trainer.learning_rate)
             decay = FLAGS.min_learning_rate/lr if lr * FLAGS.learning_rate_decay < FLAGS.min_learning_rate else FLAGS.learning_rate_decay
             if sess.run(trainer.learning_rate) > FLAGS.min_learning_rate:
                 trainer.decay_learning_rate(sess, decay)
 
-        previous_loss.append(l)
-        return l
+        previous_performances.append(performance)
+        return performance
 
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess, coord=coord)
@@ -281,14 +277,14 @@ with tf.Session(config=config) as sess:
                                                                                     step_time, loss))
             step_time, loss = 0.0, 0.0
             result = validate(global_step)
-            if result > ckpt_result and epochs >= FLAGS.max_epochs:
+            if result < ckpt_result and epochs >= FLAGS.max_epochs:
                 print("Stop learning!")
                 break
             else:
                 ckpt_result = result
 
-    best_valid_loss = min(previous_loss) if previous_loss else 0.0
-    print("Restore model to best loss on validation: %.3f" % best_valid_loss)
+    best_valid_performance = min(previous_performances) if previous_performances else 0.0
+    print("Restore model to best performance on validation: %.3f" % best_valid_performance)
     trainer.all_saver.restore(sess, best_path[0])
     model_name = best_path[0].split("/")[-1]
     trainer.model.model_saver.save(sess, os.path.join(train_dir, "final_model.tf"), write_meta_graph=False)
