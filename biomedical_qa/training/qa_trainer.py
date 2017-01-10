@@ -275,7 +275,7 @@ class BioAsqQATrainer(ExtractionQATrainer):
         inferrer = Inferrer(self.model, sess, self._beam_size)
         evaluator = BioAsqEvaluator(sampler, inferrer)
 
-        list_threshold = evaluator.find_optimal_threshold(0.001)
+        list_threshold, _ = evaluator.find_optimal_threshold(0.001)
         _, factoid_mrr, list_f1 = evaluator.evaluate(list_answer_prob_threshold=list_threshold,
                                                      list_answer_count=self._list_answer_count)
 
