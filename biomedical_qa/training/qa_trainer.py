@@ -96,19 +96,19 @@ class ExtractionQATrainer(Trainer):
         self._update = tf.train.AdamOptimizer(self.learning_rate).\
             apply_gradients(zip(self.grads, train_variables), global_step=self.global_step)
 
-        self._all_saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
-
         with tf.name_scope("summaries"):
-            tf.scalar_summary("loss", self._loss)
-            tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss))
-            tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss))
+            self._train_summaries = [
+                tf.scalar_summary("loss", self._loss),
+                tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss)),
+                tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss)),
 
-            tf.scalar_summary("train_f1_mean", self.mean_f1)
-            tf.histogram_summary("train_f1", self.f1)
-            tf.scalar_summary("correct_starts",
-                              tf.reduce_sum(tf.cast(starts_equal, tf.int32)))
-            tf.scalar_summary("correct_ends",
-                              tf.reduce_sum(tf.cast(ends_equal, tf.int32)))
+                tf.scalar_summary("train_f1_mean", self.mean_f1),
+                tf.histogram_summary("train_f1", self.f1),
+                tf.scalar_summary("correct_starts",
+                                  tf.reduce_sum(tf.cast(starts_equal, tf.int32))),
+                tf.scalar_summary("correct_ends",
+                                  tf.reduce_sum(tf.cast(ends_equal, tf.int32))),
+            ]
 
     def reduce_per_answer_loss(self, loss):
 
@@ -158,8 +158,11 @@ class ExtractionQATrainer(Trainer):
         incorrect_start_loss = tf.gather(incorrect_start_loss, self.question_partition)
 
         with tf.name_scope("summaries"):
-            tf.scalar_summary("sigmoid_correct_start_loss", tf.reduce_mean(correct_start_loss))
-            tf.scalar_summary("sigmoid_incorrect_start_loss", tf.reduce_mean(incorrect_start_loss))
+            self._train_summaries += [
+                tf.scalar_summary("sigmoid_correct_start_loss", tf.reduce_mean(correct_start_loss)),
+                tf.scalar_summary("sigmoid_incorrect_start_loss", tf.reduce_mean(incorrect_start_loss))
+            ]
+
 
         return correct_start_loss + incorrect_start_loss
 
@@ -177,8 +180,8 @@ class ExtractionQATrainer(Trainer):
         return self._update
 
     @property
-    def all_saver(self):
-        return self._all_saver
+    def train_summaries(self):
+        return tf.summary.merge(self._train_summaries)
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
         self.model.set_eval(sess)

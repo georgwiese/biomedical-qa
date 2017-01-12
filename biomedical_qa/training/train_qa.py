@@ -171,11 +171,11 @@ with tf.Session(config=config) as sess:
         valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab)
 
     if FLAGS.is_bioasq:
-        trainer = BioAsqQATrainer(FLAGS.learning_rate, model, devices[0],
-                                  train_variable_prefixes=train_variable_prefixes)
+        main_trainer = BioAsqQATrainer(FLAGS.learning_rate, model, devices[0],
+                                       train_variable_prefixes=train_variable_prefixes)
     else:
-        trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
-                                      train_variable_prefixes=train_variable_prefixes)
+        main_trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
+                                           train_variable_prefixes=train_variable_prefixes)
 
     yesno_trainer = None
     if yesno_train_sampler is not None:
@@ -185,7 +185,6 @@ with tf.Session(config=config) as sess:
     print("Created %s!" % type(model).__name__)
 
     print("Setting up summary writer...")
-    train_summaries = tf.merge_all_summaries()
     train_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/train',
                                                   sess.graph)
     dev_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/dev',
@@ -207,7 +206,7 @@ with tf.Session(config=config) as sess:
         model.model_saver.restore(sess, init_model_path)
     elif latest_checkpoint is not None:
         print("Loading from checkpoint " + latest_checkpoint)
-        trainer.all_saver.restore(sess, latest_checkpoint)
+        main_trainer.all_saver.restore(sess, latest_checkpoint)
     else:
         if not os.path.exists(train_dir):
             os.makedirs(train_dir)
@@ -225,29 +224,39 @@ with tf.Session(config=config) as sess:
     previous_performances = list()
     epoch = 0
 
+    trainers_samplers = [(main_trainer, sampler, valid_sampler)]
+    if yesno_trainer is not None:
+        trainers_samplers.append((yesno_trainer, yesno_train_sampler, yesno_valid_sampler))
+
     def validate(global_step):
+
         # Run evals on development set and print(their perplexity.)
         print("########## Validation ##############")
-        performance, summary = trainer.eval(sess, valid_sampler, verbose=True)
+        performances, summaries = zip(*[trainer.eval(sess, valid_sampler, verbose=True)
+                                        for trainer, _, valid_sampler in trainers_samplers])
         print("####################################")
-        trainer.model.set_train(sess)
+        model.set_train(sess)
 
-        dev_summary_writer.add_summary(summary, global_step)
+        for summary in summaries:
+            dev_summary_writer.add_summary(summary, global_step)
+
+        performance = sum(performances)
 
         if not best_path or performance > min(previous_performances):
             if best_path:
-                best_path[0] = trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step,
-                                                      write_meta_graph=False)
+                best_path[0] = main_trainer.all_saver.save(sess, checkpoint_path, global_step=main_trainer.global_step,
+                                                           write_meta_graph=False)
             else:
                 best_path.append(
-                    trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step, write_meta_graph=False))
+                    main_trainer.all_saver.save(sess, checkpoint_path, global_step=main_trainer.global_step, write_meta_graph=False))
 
         if previous_performances and performance < previous_performances[-1]:
             print("Decaying learningrate.")
-            lr = sess.run(trainer.learning_rate)
+            lr = sess.run(main_trainer.learning_rate)
             decay = FLAGS.min_learning_rate/lr if lr * FLAGS.learning_rate_decay < FLAGS.min_learning_rate else FLAGS.learning_rate_decay
-            if sess.run(trainer.learning_rate) > FLAGS.min_learning_rate:
-                trainer.decay_learning_rate(sess, decay)
+            if sess.run(main_trainer.learning_rate) > FLAGS.min_learning_rate:
+                for trainer, _, _ in trainers_samplers:
+                    trainer.decay_learning_rate(sess, decay)
 
         previous_performances.append(performance)
         return performance
@@ -259,19 +268,26 @@ with tf.Session(config=config) as sess:
     step_time = 0.0
     ckpt_result = 0.0
     i = 0
-    trainer.model.set_train(sess)
+
+    model.set_train(sess)
+
     epochs = 0
     validate(0)
     while True:
         i += 1
         start_time = time.time()
-        batch = sampler.get_batch()
-        # already fetch next batch parallel to running model
-        goals = [trainer.update, trainer.loss]
-        if i % FLAGS.ckpt_its == 0:
-            goals += [train_summaries]
-        results = trainer.run(sess, goals, batch)
-        loss += results[1]
+
+        summaries = []
+
+        for trainer, train_sampler, _ in trainers_samplers:
+            batch = train_sampler.get_batch()
+            goals = [trainer.update, trainer.loss]
+            if i % FLAGS.ckpt_its == 0:
+                goals += [trainer.train_summaries]
+            results = trainer.run(sess, goals, batch)
+            loss += results[1]
+            if i % FLAGS.ckpt_its == 0:
+                summaries.append(results[2])
 
         step_time += (time.time() - start_time)
 
@@ -280,8 +296,8 @@ with tf.Session(config=config) as sess:
 
         if i % FLAGS.ckpt_its == 0:
             global_step = trainer.global_step.eval()
-            batch_summary = results[2]
-            train_summary_writer.add_summary(batch_summary, global_step)
+            for summary in summaries:
+                train_summary_writer.add_summary(summary, global_step)
 
             epochs += 1
             i = 0

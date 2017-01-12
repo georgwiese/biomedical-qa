@@ -28,6 +28,10 @@ class Trainer:
     def all_saver(self):
         return self._all_saver
 
+    @property
+    def train_summaries(self):
+        raise NotImplementedError()
+
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
         raise NotImplementedError()
 

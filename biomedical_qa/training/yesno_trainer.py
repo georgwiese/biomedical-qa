@@ -60,10 +60,12 @@ class YesNoQATrainer(Trainer):
                                tf.cast(self.num_no, tf.float32)
 
             with tf.name_scope("summaries"):
-                tf.scalar_summary("yesno_loss", self._loss)
-                tf.scalar_summary("yesno_acc", self.accuracy)
-                tf.scalar_summary("yesno_yes_acc", self.yes_accuracy)
-                tf.scalar_summary("yesno_no_acc", self.no_accuracy)
+                self._train_summaries = [
+                    tf.scalar_summary("yesno_loss", self._loss),
+                    tf.scalar_summary("yesno_acc", self.accuracy),
+                    tf.scalar_summary("yesno_yes_acc", self.yes_accuracy),
+                    tf.scalar_summary("yesno_no_acc", self.no_accuracy)
+                ]
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
         self.model.set_eval(sess)
@@ -124,3 +126,7 @@ class YesNoQATrainer(Trainer):
     @property
     def update(self):
         return self._update
+
+    @property
+    def train_summaries(self):
+        return tf.summary.merge(self._train_summaries)
