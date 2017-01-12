@@ -1,15 +1,18 @@
+import os
 import string
 import sys
 import json
-import math
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 import time
 
 msmarco_json = sys.argv[1]
 output_json = sys.argv[2]
-with_answers = sys.argv[3] != "no_answers" if len(sys.argv) > 3 else True
+answer_types = sys.argv[3].split(",")
+with_answers = sys.argv[4] != "no_answers" if len(sys.argv) > 4 else True
 
+for answer_type in answer_types:
+    assert answer_type in ["factoid", "yesno"]
 
 dataset = []
 squad_style_dataset = {"data": dataset, "version": "1"}
@@ -33,10 +36,14 @@ def process(d):
     answers = [a for a in d.get("answers", [])]
     extractive_answers = []
     starts = []
+    is_yesno = False
+    is_yes = None
     if with_answers:
         for a in answers:
-            if a == "Yes" or a == "No":
-                continue
+            if a.lower() == "yes" or a.lower() == "no":
+                is_yesno = True
+                is_yes = a.lower() == "yes"
+                break
             index = passages_lower.find(a.lower())
             if index >= 0:
                 extractive_answers.append(a)
@@ -50,7 +57,21 @@ def process(d):
                     extractive_answers.append(a)
                     starts.append(index)
 
-    if not with_answers or extractive_answers:
+    if with_answers and is_yesno and "yesno" in answer_types:
+        return {
+            "title": d["query_id"],
+            "paragraphs": [
+                {
+                    "context": passages,
+                    "qas": [{
+                        "question": d["query"],
+                        "id": d["query_id"],
+                        "answers": [],
+                        "answer_is_yes": is_yes
+                    }]
+                }
+            ]}
+    elif not with_answers or (extractive_answers and "factoid" in answer_types):
         example = {"title": d["query_id"], "paragraphs": [
             {
                 "context": passages,
@@ -85,5 +106,9 @@ for example in pool.map(process, msmarco, chunksize=chunk_size):
                                                                                          (time.time()-start)/counter))
         sys.stdout.flush()
 
+print()
+print("Recovered %d of %d questions." % (len(dataset), len(msmarco)))
+
+os.makedirs(os.path.dirname(output_json), exist_ok=True)
 with open(output_json, "w") as f:
     json.dump(squad_style_dataset, f)
