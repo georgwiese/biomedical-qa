@@ -88,7 +88,7 @@ config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
 
 
-def make_sampler(filenames, vocab):
+def make_sampler(filenames, vocab, types):
     args = {
         "dir": FLAGS.data,
         "filenames": filenames,
@@ -96,6 +96,7 @@ def make_sampler(filenames, vocab):
         "vocab": vocab,
         "instances_per_epoch": FLAGS.max_instances,
         "split_contexts_on_newline": FLAGS.split_contexts,
+        "types": types
     }
 
     if FLAGS.is_bioasq:
@@ -156,19 +157,19 @@ with tf.Session(config=config) as sess:
 
     print("Preparing Samplers ...")
     train_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.trainset_prefix)]
-    sampler = make_sampler(train_fns, model.transfer_model.vocab)
+    sampler = make_sampler(train_fns, model.transfer_model.vocab, ["factoid", "list"])
 
     valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
-    valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab)
+    valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab, ["factoid", "list"])
 
     # Optionally load yes/no questions
     yesno_train_sampler = None
     yesno_valid_sampler = None
     if FLAGS.yesno_data is not None:
         train_fns = [fn for fn in os.listdir(FLAGS.yesno_data) if fn.startswith(FLAGS.trainset_prefix)]
-        yesno_train_sampler = make_sampler(train_fns, model.transfer_model.vocab)
+        yesno_train_sampler = make_sampler(train_fns, model.transfer_model.vocab, ["yesno"])
         valid_fns = [fn for fn in os.listdir(FLAGS.yesno_data) if fn.startswith(FLAGS.validset_prefix)]
-        valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab)
+        yesno_valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab, ["yesno"])
 
     if FLAGS.is_bioasq:
         main_trainer = BioAsqQATrainer(FLAGS.learning_rate, model, devices[0],

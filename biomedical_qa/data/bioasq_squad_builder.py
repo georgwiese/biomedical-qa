@@ -153,7 +153,7 @@ class BioAsqSquadBuilder(object):
 
             if question["type"] == "yesno":
 
-                is_yes = question["exact_answer"].lower() in ["yes", "yes."]
+                is_yes = question["exact_answer"].lower().strip() in ["yes", "yes."]
                 paragraph["qas"][0]["answer_is_yes"] = is_yes
 
         return paragraph

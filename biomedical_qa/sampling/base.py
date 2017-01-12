@@ -19,6 +19,8 @@ class BaseSampler:
         self.tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
         self._qas, self.char_offsets = self.build_questions()
 
+        assert len(self._qas) > 0
+
         if shuffle:
             self._rng.shuffle(self._qas)
         if instances_per_epoch is not None:

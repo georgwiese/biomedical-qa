@@ -9,9 +9,10 @@ class YesNoQATrainer(Trainer):
 
 
     def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
-        self._train_variable_prefixes = train_variable_prefixes
-        assert model.yesno_added
-        Trainer.__init__(self, learning_rate, model, device)
+        with tf.variable_scope("YesNoQATrainer"):
+            self._train_variable_prefixes = train_variable_prefixes
+            assert model.yesno_added
+            Trainer.__init__(self, learning_rate, model, device)
 
 
     def _init(self):
@@ -22,8 +23,8 @@ class YesNoQATrainer(Trainer):
 
             model = self.model
             self._opt = tf.train.AdamOptimizer(self.learning_rate)
-            self._loss = tf.nn.sigmoid_cross_entropy_with_logits(
-                model.yesno_scores, tf.cast(self.correct_answers, tf.float32))
+            self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                model.yesno_scores, tf.cast(self.correct_answers, tf.float32)))
 
             if len(self._train_variable_prefixes):
                 train_variables = [v for v in model.train_variables
@@ -59,6 +60,13 @@ class YesNoQATrainer(Trainer):
             self.no_accuracy = tf.cast(self.num_correct_no, tf.float32) / \
                                tf.cast(self.num_no, tf.float32)
 
+            self.yes_accuracy = tf.cond(tf.equal(self.num_yes, 0),
+                                        lambda: tf.zeros([]),
+                                        lambda: self.yes_accuracy)
+            self.no_accuracy = tf.cond(tf.equal(self.num_no, 0),
+                                       lambda: tf.zeros([]),
+                                       lambda: self.no_accuracy)
+
             with tf.name_scope("summaries"):
                 self._train_summaries = [
                     tf.scalar_summary("yesno_loss", self._loss),
@@ -68,31 +76,38 @@ class YesNoQATrainer(Trainer):
                 ]
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
+
         self.model.set_eval(sess)
         total = 0
-        acc = 0.0
-        yes_acc = 0.0
-        no_acc = 0.0
+        num_correct_yes = 0
+        num_correct_no = 0
+        num_correct = 0
+        num_yes = 0
+        num_no = 0
         e = sampler.epoch
         sampler.reset()
         while sampler.epoch == e and (subsample < 0 or total < subsample):
             batch = sampler.get_batch()
-            _acc, _yes_acc, _no_acc = self.run(sess,
-                                               [self.accuracy, self.yes_accuracy, self.no_accuracy],
-                                               batch)
-            acc += _acc
-            yes_acc += _yes_acc
-            no_acc += _no_acc
+            _num_correct_yes, _num_correct_no, _num_yes, _num_no = self.run(
+                sess,
+                [self.num_correct_yes, self.num_correct_no, self.num_yes, self.num_no],
+                batch)
+            num_correct_yes += _num_correct_yes
+            num_correct_no += _num_correct_no
+            num_correct += _num_correct_yes + _num_correct_no
+            num_yes += _num_yes
+            num_no += _num_no
             total += len(batch)
 
             if verbose:
                 sys.stdout.write("\r%d - Acc: %.3f, Yes Acc: %.3f, No Acc: %.3f" %
-                                 (total, acc / total, yes_acc / total, no_acc / total))
+                                 (total, num_correct / total, num_correct_yes / num_yes,
+                                  num_correct_no / num_no))
                 sys.stdout.flush()
 
-        acc = acc / total
-        yes_acc = yes_acc / total
-        no_acc = no_acc / total
+        acc = num_correct / total
+        yes_acc = num_correct_yes / num_yes
+        no_acc = num_correct_no / num_no
         if verbose:
             print("")
 

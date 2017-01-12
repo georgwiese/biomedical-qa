@@ -16,9 +16,10 @@ SIGMOID_NEGATIVE_SAMPLES = -1
 class ExtractionQATrainer(Trainer):
 
     def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
-        self._train_variable_prefixes = train_variable_prefixes
-        assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
-        Trainer.__init__(self, learning_rate, model, device)
+        with tf.variable_scope("ExtractionQATrainer"):
+            self._train_variable_prefixes = train_variable_prefixes
+            assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
+            Trainer.__init__(self, learning_rate, model, device)
 
     def _init(self):
         self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")

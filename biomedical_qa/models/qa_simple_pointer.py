@@ -312,6 +312,7 @@ class QASimplePointerModel(ExtractionQAModel):
                 input = tf.concat(1, [self.question_representation, self.context_representation])
                 self.yesno_scores = tf.contrib.layers.fully_connected(input, 1,
                                                                       scope="yesno_scores")
+                self.yesno_scores = tf.squeeze(self.yesno_scores)
                 self.yesno_probs = tf.nn.sigmoid(self.yesno_scores)
 
 
