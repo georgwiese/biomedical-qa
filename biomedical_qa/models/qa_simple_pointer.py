@@ -48,14 +48,15 @@ class QASimplePointerModel(ExtractionQAModel):
             self.context_mask = tfutil.mask_for_lengths(self.context_length, self._batch_size, self.embedder.max_length)
 
             question_binary_mask = tfutil.mask_for_lengths(self.question_length,
-                                                           self._batch_size,
+                                                           self.question_embedder.batch_size,
                                                            self.question_embedder.max_length,
                                                            value=1.0,
                                                            mask_right=False)
 
             with tf.variable_scope("preprocessing_layer"):
                 if self._with_features:
-                    in_question_feature = tf.ones(tf.pack([self._batch_size, self.question_embedder.max_length, 2]))
+                    in_question_feature = tf.ones(tf.pack([self.question_embedder.batch_size,
+                                                           self.question_embedder.max_length, 2]))
                     embedded_question = tf.concat(2, [self.embedded_question, in_question_feature])
                 else:
                     embedded_question = self.embedded_question
@@ -70,7 +71,7 @@ class QASimplePointerModel(ExtractionQAModel):
                                                                      biases_initializer=None,
                                                                      scope="attention")
                 attention_scores = attention_scores + tf.expand_dims(
-                    tfutil.mask_for_lengths(self.question_length, self._batch_size,
+                    tfutil.mask_for_lengths(self.question_length, self.question_embedder.batch_size,
                                             self.question_embedder.max_length), 2)
                 attention_weights = tf.nn.softmax(attention_scores, 1)
                 self.question_attention_weights = attention_weights
@@ -78,8 +79,10 @@ class QASimplePointerModel(ExtractionQAModel):
 
                 # Multiply question features for each paragraph
                 self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
+                self._embedded_question_not_dropped = tf.gather(self._embedded_question_not_dropped, self.context_partition)
                 self.question_representation = tf.gather(self.question_representation, self.context_partition)
                 self.question_length = tf.gather(self.question_length, self.context_partition)
+                question_binary_mask = tf.gather(question_binary_mask, self.context_partition)
 
                 # context
                 if self._with_features:
