@@ -15,15 +15,16 @@ from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionQATrainer, \
     BioAsqQATrainer
+from biomedical_qa.training.yesno_trainer import YesNoQATrainer
 
 from biomedical_qa.util import load_vocab
 
 # data loading specifics
 tf.app.flags.DEFINE_string('data', None, 'Directory containing dataset files.')
+tf.app.flags.DEFINE_string('yesno_data', None, 'Directory containing Yes/No dataset files.')
 tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts on newline.')
 tf.app.flags.DEFINE_string("trainset_prefix", "train", "Prefix of training files.")
 tf.app.flags.DEFINE_string("validset_prefix", "valid", "Prefix of validation files.")
-tf.app.flags.DEFINE_string("testset_prefix", "test", "Prefix of test files.")
 tf.app.flags.DEFINE_string("dataset", "squad", "[wikireading,squad].")
 tf.app.flags.DEFINE_string("task", "qa", "qa, multiple_choice, question_generation")
 
@@ -132,14 +133,14 @@ with tf.Session(config=config) as sess:
             embedder = ConcatEmbedder([transfer_model, char_embedder])
 
         print("Creating model of type %s..." % FLAGS.model_type)
-        if FLAGS.model_type == "qa_pointer":
+        if FLAGS.model_type == "pointer":
             model = QAPointerModel(FLAGS.size, transfer_model, devices=devices,
                                          keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
                                          answer_layer_depth=FLAGS.answer_layer_depth,
                                          answer_layer_poolsize=FLAGS.answer_layer_poolsize,
                                          answer_layer_type=FLAGS.answer_layer_type,
                                          start_output_unit=FLAGS.start_output_unit)
-        elif FLAGS.model_type == "qa_simple_pointer":
+        elif FLAGS.model_type == "simple_pointer":
             with_inter_fusion = FLAGS.with_fusion
             num_intrafusion_layers = 1 if FLAGS.with_fusion else 0
             model = QASimplePointerModel(FLAGS.size, transfer_model, devices=devices,
@@ -150,19 +151,24 @@ with tf.Session(config=config) as sess:
         else:
             raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 
+    if FLAGS.yesno_data is not None:
+        model.add_yesno()
+
     print("Preparing Samplers ...")
     train_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.trainset_prefix)]
-    random.shuffle(train_fns)
-    print("Training sets (first 100): ", train_fns[:100])
     sampler = make_sampler(train_fns, model.transfer_model.vocab)
 
     valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
-    print("Valid sets: (first 100)", valid_fns[:100])
     valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab)
-    test_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.testset_prefix)]
-    if test_fns:
-        print("Test sets: (first 100)", test_fns[:100])
-        test_sampler = SQuADSampler(FLAGS.data, test_fns, FLAGS.batch_size, model.transfer_model.vocab, FLAGS.max_instances)
+
+    # Optionally load yes/no questions
+    yesno_train_sampler = None
+    yesno_valid_sampler = None
+    if FLAGS.yesno_data is not None:
+        train_fns = [fn for fn in os.listdir(FLAGS.yesno_data) if fn.startswith(FLAGS.trainset_prefix)]
+        yesno_train_sampler = make_sampler(train_fns, model.transfer_model.vocab)
+        valid_fns = [fn for fn in os.listdir(FLAGS.yesno_data) if fn.startswith(FLAGS.validset_prefix)]
+        valid_sampler = make_sampler(valid_fns, model.transfer_model.vocab)
 
     if FLAGS.is_bioasq:
         trainer = BioAsqQATrainer(FLAGS.learning_rate, model, devices[0],
@@ -170,6 +176,11 @@ with tf.Session(config=config) as sess:
     else:
         trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
                                       train_variable_prefixes=train_variable_prefixes)
+
+    yesno_trainer = None
+    if yesno_train_sampler is not None:
+        yesno_trainer = YesNoQATrainer(FLAGS.learning_rate, model, devices[0],
+                                       train_variable_prefixes=train_variable_prefixes)
 
     print("Created %s!" % type(model).__name__)
 
@@ -193,7 +204,7 @@ with tf.Session(config=config) as sess:
             assert FLAGS.model_config is not None, "Provide model_config to use latest checkpoint."
             init_model_path = tf.train.latest_checkpoint(os.path.dirname(FLAGS.model_config))
         print("Loading from path " + init_model_path)
-        trainer.model.model_saver.restore(sess, init_model_path)
+        model.model_saver.restore(sess, init_model_path)
     elif latest_checkpoint is not None:
         print("Loading from checkpoint " + latest_checkpoint)
         trainer.all_saver.restore(sess, latest_checkpoint)
@@ -293,7 +304,3 @@ with tf.Session(config=config) as sess:
     trainer.all_saver.restore(sess, best_path[0])
     model_name = best_path[0].split("/")[-1]
     trainer.model.model_saver.save(sess, os.path.join(train_dir, "final_model.tf"), write_meta_graph=False)
-    if test_fns:
-        print("########## Test ##############")
-        trainer.eval(sess, test_sampler, verbose=True)
-        print("####################################")

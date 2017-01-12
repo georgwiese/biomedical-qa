@@ -13,7 +13,7 @@ class QASimplePointerModel(ExtractionQAModel):
 
     def __init__(self, size, embedder, keep_prob=1.0, composition="LSTM", devices=None, name="QASimplePointerModel",
                  with_features=True, num_intrafusion_layers=1, with_inter_fusion=True, layer_norm=False,
-                 start_output_unit="softmax"):
+                 start_output_unit="softmax", with_yesno=False):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1%len(devices)] if devices is not None else "/cpu:0"
@@ -21,6 +21,7 @@ class QASimplePointerModel(ExtractionQAModel):
         self._with_features = with_features
         self._with_inter_fusion = with_inter_fusion
         self._layer_norm = layer_norm
+        self._with_yesno = with_yesno
         self.start_output_unit = start_output_unit
         assert start_output_unit in ["softmax", "sigmoid"]
         ExtractionQAModel.__init__(self, size, embedder, keep_prob, name)
@@ -80,7 +81,7 @@ class QASimplePointerModel(ExtractionQAModel):
                 # Multiply question features for each paragraph
                 self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
                 self._embedded_question_not_dropped = tf.gather(self._embedded_question_not_dropped, self.context_partition)
-                self.question_representation = tf.gather(self.question_representation, self.context_partition)
+                self.question_representation_per_context = tf.gather(self.question_representation, self.context_partition)
                 self.question_length = tf.gather(self.question_length, self.context_partition)
                 question_binary_mask = tf.gather(question_binary_mask, self.context_partition)
 
@@ -153,7 +154,11 @@ class QASimplePointerModel(ExtractionQAModel):
                 self.predicted_context_indices, \
                 self._start_scores, self._start_pointer, self.start_probs, \
                 self._end_scores, self._end_pointer, self.end_probs = \
-                    self._spn_answer_layer(self.question_representation, self.encoded_ctxt)
+                    self._spn_answer_layer(self.question_representation_per_context, self.encoded_ctxt)
+
+            self.yesno_added = False
+            if self._with_yesno:
+                self.add_yesno()
 
             self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
 
@@ -278,6 +283,38 @@ class QASimplePointerModel(ExtractionQAModel):
 
         return contexts, start_scores, starts, start_probs, end_scores, ends, end_probs
 
+    def add_yesno(self):
+
+        if self.yesno_added:
+            return
+        self.yesno_added = True
+
+        with tf.variable_scope("yesno"):
+
+            with tf.variable_scope("context_representation"):
+
+                attention_scores = tf.contrib.layers.fully_connected(self.encoded_ctxt, 1,
+                                                                     activation_fn=None,
+                                                                     weights_initializer=None,
+                                                                     biases_initializer=None,
+                                                                     scope="context_attention")
+                attention_scores = attention_scores + tf.expand_dims(
+                    tfutil.mask_for_lengths(self.context_length, self._batch_size,
+                                            self.embedder.max_length), 2)
+                attention_weights = tfutil.segment_softmax(attention_scores, self.context_partition)
+                self.context_attention_weights = attention_weights
+                self.context_representation = tf.segment_sum(
+                    tf.reduce_sum(attention_weights * self.encoded_ctxt, [1]),
+                    self.context_partition)
+
+            with tf.variable_scope("yesno_output_module"):
+
+                input = tf.concat(1, [self.question_representation, self.context_representation])
+                self.yesno_scores = tf.contrib.layers.fully_connected(input, 1,
+                                                                      scope="yesno_scores")
+                self.yesno_probs = tf.nn.sigmoid(self.yesno_scores)
+
+
     def set_eval(self, sess):
         super().set_eval(sess)
         sess.run(self._set_eval)
@@ -318,6 +355,7 @@ class QASimplePointerModel(ExtractionQAModel):
         config["layer_norm"] = self._layer_norm
         config["composition"] = self._composition
         config["start_output_unit"] = self.start_output_unit
+        config["with_yesno"] = self._with_yesno
         return config
 
 
@@ -344,7 +382,8 @@ class QASimplePointerModel(ExtractionQAModel):
             with_inter_fusion=config["with_inter_fusion"],
             num_intrafusion_layers=config["num_intrafusion_layers"],
             layer_norm=config.get("layer_norm", False),
-            start_output_unit=config["start_output_unit"])
+            start_output_unit=config["start_output_unit"],
+            with_yesno=config.get("with_yesno", False))
 
         return qa_model
 
