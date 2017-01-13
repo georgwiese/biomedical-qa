@@ -65,6 +65,7 @@ def process(d):
                     "context": passages,
                     "qas": [{
                         "question": d["query"],
+                        "question_type": "yesno",
                         "id": d["query_id"],
                         "answers": [],
                         "answer_is_yes": is_yes
@@ -77,6 +78,7 @@ def process(d):
                 "context": passages,
                 "qas": [{
                     "question": d["query"],
+                    "question_type": "factoid",
                     "id": d["query_id"],
                     "answers": [{
                                     "answer_start": s,
