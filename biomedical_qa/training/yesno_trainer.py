@@ -70,30 +70,33 @@ class YesNoGoalDefiner(GoalDefiner):
         num_correct = 0
         num_yes = 0
         num_no = 0
+        loss = 0.0
         e = sampler.epoch
         sampler.reset()
         while sampler.epoch == e and (subsample < 0 or total < subsample):
             batch = sampler.get_batch()
-            _num_correct_yes, _num_correct_no, _num_yes, _num_no = self.run(
+            _num_correct_yes, _num_correct_no, _num_yes, _num_no, _loss = self.run(
                 sess,
-                [self.num_correct_yes, self.num_correct_no, self.num_yes, self.num_no],
+                [self.num_correct_yes, self.num_correct_no, self.num_yes, self.num_no, self.loss],
                 batch)
             num_correct_yes += _num_correct_yes
             num_correct_no += _num_correct_no
             num_correct += _num_correct_yes + _num_correct_no
             num_yes += _num_yes
             num_no += _num_no
+            loss += _loss
             total += len(batch)
 
             if verbose:
-                sys.stdout.write("\r%d - Acc: %.3f, Yes Acc: %.3f, No Acc: %.3f" %
+                sys.stdout.write("\r%d - Acc: %.3f, Yes Acc: %.3f, No Acc: %.3f, Loss: %3f" %
                                  (total, num_correct / total, num_correct_yes / num_yes,
-                                  num_correct_no / num_no))
+                                  num_correct_no / num_no, loss / total))
                 sys.stdout.flush()
 
         acc = num_correct / total
         yes_acc = num_correct_yes / num_yes
         no_acc = num_correct_no / num_no
+        loss /= total
         if verbose:
             print("")
 
@@ -101,6 +104,7 @@ class YesNoGoalDefiner(GoalDefiner):
         summary.value.add(tag="valid_yesno_acc", simple_value=acc)
         summary.value.add(tag="valid_yesno_yes_acc", simple_value=yes_acc)
         summary.value.add(tag="valid_yesno_no_acc", simple_value=no_acc)
+        summary.value.add(tag="valid_yesno_loss", simple_value=loss)
 
         return acc, summary
 
