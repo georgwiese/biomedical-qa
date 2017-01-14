@@ -272,9 +272,10 @@ with tf.Session(config=config) as sess:
         i += 1
         start_time = time.time()
 
-        loss, summaries = trainer.run_train_steps(sess, train_samplers,
-                                                  with_summaries=i % FLAGS.ckpt_its == 0)
+        batch_loss, summaries = trainer.run_train_steps(sess, train_samplers,
+                                                        with_summaries=i % FLAGS.ckpt_its == 0)
 
+        loss += batch_loss
         step_time += (time.time() - start_time)
 
         sys.stdout.write("\r%.1f%% Loss: %.3f, step-time %.3f" % (i*100.0 / FLAGS.ckpt_its, loss / i, step_time / i))
