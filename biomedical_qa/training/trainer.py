@@ -58,11 +58,7 @@ class Trainer(object):
 
     def _init(self):
 
-        self._loss = tf.ones([])
-        for trainer in self.goal_definers:
-            self._loss += trainer.loss
-
-        self._opt = tf.train.AdamOptimizer(self.learning_rate)
+        self._optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
         if len(self._train_variable_prefixes):
             train_variables = [v for v in self.model.train_variables
@@ -73,51 +69,37 @@ class Trainer(object):
 
         print("Training variables: %d / %d" % (len(train_variables),
                                                len(self.model.train_variables)))
-        grads = tf.gradients(self.loss, train_variables, colocate_gradients_with_ops=True)
-        self.grads = grads
-        #, _ = tf.clip_by_global_norm(grads, 5.0)
 
-        self._update = tf.train.AdamOptimizer(self.learning_rate). \
-            apply_gradients(zip(self.grads, train_variables), global_step=self.global_step)
+        # Build one update up for each goal definer
+        self._updates = {}
+        for goal_definer in self.goal_definers:
+            grads = tf.gradients(goal_definer.loss, train_variables, colocate_gradients_with_ops=True)
+            #, _ = tf.clip_by_global_norm(grads, 5.0)
+            self._updates[goal_definer] = self._optimizer. \
+                apply_gradients(zip(grads, train_variables),
+                                global_step=self.global_step)
+
 
 
     def run_train_steps(self, sess, samplers, with_summaries):
-        """Runs a train step for each goal definer.
-
-        For each train step, all losses are fed to be 0, except the loss of
-        the current goal definer. This way, all goals are optimized
-        individually.
-        """
+        """Runs a train step for each goal definer."""
 
         loss = 0.0
         summaries = []
 
         for goal_definer, train_sampler in zip(self.goal_definers, samplers):
             batch = train_sampler.get_batch()
-            goals = [self._update, goal_definer.loss]
+            goals = [self._updates[goal_definer], goal_definer.loss]
             if with_summaries:
                 goals += [goal_definer.train_summaries]
 
-            feed_dict = self.get_feed_dict(goal_definer)
-            feed_dict.update(goal_definer.get_feed_dict(batch))
-            results = sess.run(goals, feed_dict)
+            results = sess.run(goals, goal_definer.get_feed_dict(batch))
 
             loss += results[1]
             if with_summaries:
                 summaries.append(results[2])
 
         return loss, summaries
-
-
-    def get_feed_dict(self, current_goal_definer):
-        """Sets all losses to 0, except current_goal_definer's loss."""
-
-        feed_dict = {}
-        for goal_definer in self.goal_definers:
-            if goal_definer != current_goal_definer:
-                feed_dict[goal_definer.loss] = 0.0
-
-        return feed_dict
 
 
     def eval(self, sess, samplers, subsample=-1, after_batch_hook=None, verbose=False):
@@ -130,11 +112,6 @@ class Trainer(object):
         performance = sum(performances)
 
         return performance, summaries
-
-
-    @property
-    def loss(self):
-        return self._loss
 
 
     @property
