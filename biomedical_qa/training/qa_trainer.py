@@ -7,19 +7,20 @@ from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 from biomedical_qa.inference.inference import Inferrer
 from biomedical_qa.models.crf import crf_log_likelihood
 from biomedical_qa.models.qa_model import ExtractionQAModel
-from biomedical_qa.training.trainer import Trainer
-
+from biomedical_qa.training.trainer import GoalDefiner
 
 SIGMOID_NEGATIVE_SAMPLES = -1
 
 
-class ExtractionQATrainer(Trainer):
+class ExtractionGoalDefiner(GoalDefiner):
 
-    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
-        with tf.variable_scope("ExtractionQATrainer"):
-            self._train_variable_prefixes = train_variable_prefixes
-            assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
-            Trainer.__init__(self, learning_rate, model, device)
+    def __init__(self, model, device):
+        assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
+        GoalDefiner.__init__(self, model, device)
+
+    @property
+    def name(self):
+        return "ExtractionGoalDefiner"
 
     def _init(self):
         self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
@@ -35,7 +36,6 @@ class ExtractionQATrainer(Trainer):
         self.answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
 
         model = self.model
-        self._opt = tf.train.AdamOptimizer(self.learning_rate)
 
         if model.start_output_unit == "softmax":
             start_loss = self.softmax_start_loss(model)
@@ -80,22 +80,6 @@ class ExtractionQATrainer(Trainer):
         spans_equal = tf.logical_and(starts_equal, ends_equal)
         self.exact_matches = tf.segment_max(tf.cast(spans_equal, tf.int32),
                                             self.question_partition)
-
-        if len(self._train_variable_prefixes):
-            train_variables = [v for v in model.train_variables
-                               if any([v.name.startswith(prefix)
-                                       for prefix in self._train_variable_prefixes])]
-        else:
-            train_variables = model.train_variables
-
-        print("Training variables: %d / %d" % (len(train_variables),
-                                               len(model.train_variables)))
-        grads = tf.gradients(self.loss, train_variables, colocate_gradients_with_ops=True)
-        self.grads = grads
-        #, _ = tf.clip_by_global_norm(grads, 5.0)
-
-        self._update = tf.train.AdamOptimizer(self.learning_rate).\
-            apply_gradients(zip(self.grads, train_variables), global_step=self.global_step)
 
         with tf.name_scope("summaries"):
             self._train_summaries = [
@@ -177,10 +161,6 @@ class ExtractionQATrainer(Trainer):
         return self._loss
 
     @property
-    def update(self):
-        return self._update
-
-    @property
     def train_summaries(self):
         return tf.summary.merge(self._train_summaries)
 
@@ -254,21 +234,17 @@ class ExtractionQATrainer(Trainer):
 
         return feed_dict
 
-    def run(self, sess, goal, qa_settings):
-        return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings))
 
-
-class BioAsqQATrainer(ExtractionQATrainer):
+class BioAsqGoalDefiner(ExtractionGoalDefiner):
     """Overwrite eval() Method to optimize BioASQ measures."""
 
 
-    def __init__(self, learning_rate, model, device, train_variable_prefixes=[],
+    def __init__(self, model, device,
                  beam_size=10, list_answer_count=5):
 
         self._beam_size = beam_size
         self._list_answer_count = list_answer_count
-        ExtractionQATrainer.__init__(self, learning_rate, model, device,
-                                     train_variable_prefixes)
+        ExtractionGoalDefiner.__init__(self, model, device)
 
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):

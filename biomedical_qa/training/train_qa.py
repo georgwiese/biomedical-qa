@@ -13,9 +13,9 @@ from biomedical_qa.models.qa_pointer import QAPointerModel
 from biomedical_qa.models.qa_simple_pointer import QASimplePointerModel
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
-from biomedical_qa.training.qa_trainer import ExtractionQATrainer, \
-    BioAsqQATrainer
-from biomedical_qa.training.yesno_trainer import YesNoQATrainer
+from biomedical_qa.training.qa_trainer import ExtractionGoalDefiner, BioAsqGoalDefiner
+from biomedical_qa.training.trainer import Trainer
+from biomedical_qa.training.yesno_trainer import YesNoGoalDefiner
 
 from biomedical_qa.util import load_vocab
 
@@ -156,32 +156,33 @@ with tf.Session(config=config) as sess:
         model.add_yesno()
 
     print("Preparing Samplers ...")
-    train_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.trainset_prefix)]
-    sampler = make_sampler(FLAGS.data, train_fns, model.transfer_model.vocab, ["factoid", "list"])
+    train_samplers = []
+    valid_samplers = []
 
-    valid_fns = [fn for fn in os.listdir(FLAGS.data) if fn.startswith(FLAGS.validset_prefix)]
-    valid_sampler = make_sampler(FLAGS.data, valid_fns, model.transfer_model.vocab, ["factoid", "list"])
+    for dir, types in [(FLAGS.data, ["factoid", "list"]), (FLAGS.yesno_data, ["yesno"])]:
+        if dir is not None:
+            train_fns = [fn for fn in os.listdir(dir) if fn.startswith(FLAGS.trainset_prefix)]
+            train_samplers.append(make_sampler(dir, train_fns,
+                                               model.transfer_model.vocab,
+                                               types))
 
-    # Optionally load yes/no questions
-    yesno_train_sampler = None
-    yesno_valid_sampler = None
+            valid_fns = [fn for fn in os.listdir(dir) if fn.startswith(FLAGS.validset_prefix)]
+            valid_samplers.append(make_sampler(dir, valid_fns,
+                                               model.transfer_model.vocab,
+                                               types))
+
+    goal_definers = []
+    if FLAGS.data is not None:
+        if FLAGS.is_bioasq:
+            goal_definers.append(BioAsqGoalDefiner(model, devices[0]))
+        else:
+            goal_definers.append(ExtractionGoalDefiner(model, devices[0]))
+
     if FLAGS.yesno_data is not None:
-        train_fns = [fn for fn in os.listdir(FLAGS.yesno_data) if fn.startswith(FLAGS.trainset_prefix)]
-        yesno_train_sampler = make_sampler(FLAGS.yesno_data, train_fns, model.transfer_model.vocab, ["yesno"])
-        valid_fns = [fn for fn in os.listdir(FLAGS.yesno_data) if fn.startswith(FLAGS.validset_prefix)]
-        yesno_valid_sampler = make_sampler(FLAGS.yesno_data, valid_fns, model.transfer_model.vocab, ["yesno"])
+        goal_definers.append(YesNoGoalDefiner(model, devices[0]))
 
-    if FLAGS.is_bioasq:
-        main_trainer = BioAsqQATrainer(FLAGS.learning_rate, model, devices[0],
-                                       train_variable_prefixes=train_variable_prefixes)
-    else:
-        main_trainer = ExtractionQATrainer(FLAGS.learning_rate, model, devices[0],
-                                           train_variable_prefixes=train_variable_prefixes)
-
-    yesno_trainer = None
-    if yesno_train_sampler is not None:
-        yesno_trainer = YesNoQATrainer(FLAGS.learning_rate, model, devices[0],
-                                       train_variable_prefixes=train_variable_prefixes)
+    trainer = Trainer(model, FLAGS.learning_rate, goal_definers, devices[0],
+                      train_variable_prefixes)
 
     print("Created %s!" % type(model).__name__)
 
@@ -207,7 +208,7 @@ with tf.Session(config=config) as sess:
         model.model_saver.restore(sess, init_model_path)
     elif latest_checkpoint is not None:
         print("Loading from checkpoint " + latest_checkpoint)
-        main_trainer.all_saver.restore(sess, latest_checkpoint)
+        trainer.all_saver.restore(sess, latest_checkpoint)
     else:
         if not os.path.exists(train_dir):
             os.makedirs(train_dir)
@@ -225,39 +226,31 @@ with tf.Session(config=config) as sess:
     previous_performances = list()
     epoch = 0
 
-    trainers_samplers = [(main_trainer, sampler, valid_sampler)]
-    if yesno_trainer is not None:
-        trainers_samplers.append((yesno_trainer, yesno_train_sampler, yesno_valid_sampler))
-
-    def validate(global_step):
+    def validate(global_step, trainer):
 
         # Run evals on development set and print(their perplexity.)
         print("########## Validation ##############")
-        performances, summaries = zip(*[trainer.eval(sess, valid_sampler, verbose=True)
-                                        for trainer, _, valid_sampler in trainers_samplers])
+        performance, summaries = trainer.eval(sess, valid_samplers, verbose=True)
         print("####################################")
         model.set_train(sess)
 
         for summary in summaries:
             dev_summary_writer.add_summary(summary, global_step)
 
-        performance = sum(performances)
-
         if not best_path or performance > min(previous_performances):
             if best_path:
-                best_path[0] = main_trainer.all_saver.save(sess, checkpoint_path, global_step=main_trainer.global_step,
-                                                           write_meta_graph=False)
+                best_path[0] = trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step,
+                                                      write_meta_graph=False)
             else:
                 best_path.append(
-                    main_trainer.all_saver.save(sess, checkpoint_path, global_step=main_trainer.global_step, write_meta_graph=False))
+                    trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step, write_meta_graph=False))
 
         if previous_performances and performance < previous_performances[-1]:
             print("Decaying learningrate.")
-            lr = sess.run(main_trainer.learning_rate)
+            lr = sess.run(trainer.learning_rate)
             decay = FLAGS.min_learning_rate/lr if lr * FLAGS.learning_rate_decay < FLAGS.min_learning_rate else FLAGS.learning_rate_decay
-            if sess.run(main_trainer.learning_rate) > FLAGS.min_learning_rate:
-                for trainer, _, _ in trainers_samplers:
-                    trainer.decay_learning_rate(sess, decay)
+            if sess.run(trainer.learning_rate) > FLAGS.min_learning_rate:
+                trainer.decay_learning_rate(sess, decay)
 
         previous_performances.append(performance)
         return performance
@@ -273,22 +266,14 @@ with tf.Session(config=config) as sess:
     model.set_train(sess)
 
     epochs = 0
-    validate(0)
+    validate(0, trainer)
+
     while True:
         i += 1
         start_time = time.time()
 
-        summaries = []
-
-        for trainer, train_sampler, _ in trainers_samplers:
-            batch = train_sampler.get_batch()
-            goals = [trainer.update, trainer.loss]
-            if i % FLAGS.ckpt_its == 0:
-                goals += [trainer.train_summaries]
-            results = trainer.run(sess, goals, batch)
-            loss += results[1]
-            if i % FLAGS.ckpt_its == 0:
-                summaries.append(results[2])
+        loss, summaries = trainer.run_train_steps(sess, train_samplers,
+                                                  with_summaries=i % FLAGS.ckpt_its == 0)
 
         step_time += (time.time() - start_time)
 
@@ -309,7 +294,7 @@ with tf.Session(config=config) as sess:
                                                                                     trainer.learning_rate.eval(),
                                                                                     step_time, loss))
             step_time, loss = 0.0, 0.0
-            result = validate(global_step)
+            result = validate(global_step, trainer)
             if result < ckpt_result and epochs >= FLAGS.max_epochs:
                 print("Stop learning!")
                 break

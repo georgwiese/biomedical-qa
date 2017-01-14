@@ -2,17 +2,21 @@ import sys
 
 import tensorflow as tf
 
-from biomedical_qa.training.trainer import Trainer
+from biomedical_qa.training.trainer import GoalDefiner
 
 
-class YesNoQATrainer(Trainer):
+class YesNoGoalDefiner(GoalDefiner):
 
 
-    def __init__(self, learning_rate, model, device, train_variable_prefixes=[]):
-        with tf.variable_scope("YesNoQATrainer"):
-            self._train_variable_prefixes = train_variable_prefixes
-            assert model.yesno_added
-            Trainer.__init__(self, learning_rate, model, device)
+    def __init__(self, model, device):
+        assert model.yesno_added
+        GoalDefiner.__init__(self, model, device)
+
+
+    @property
+    def name(self):
+
+        return "YesNoGoalDefiner"
 
 
     def _init(self):
@@ -22,26 +26,8 @@ class YesNoQATrainer(Trainer):
             self.correct_answers = tf.placeholder(tf.bool, [None], "yes")
 
             model = self.model
-            self._opt = tf.train.AdamOptimizer(self.learning_rate)
             self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                 model.yesno_scores, tf.cast(self.correct_answers, tf.float32)))
-
-            if len(self._train_variable_prefixes):
-                train_variables = [v for v in model.train_variables
-                                   if any([v.name.startswith(prefix)
-                                           for prefix in self._train_variable_prefixes])]
-            else:
-                train_variables = model.train_variables
-
-            print("Training variables: %d / %d" % (len(train_variables),
-                                                   len(model.train_variables)))
-
-            grads = tf.gradients(self.loss, train_variables, colocate_gradients_with_ops=True)
-            self.grads = grads
-            #, _ = tf.clip_by_global_norm(grads, 5.0)
-
-            self._update = tf.train.AdamOptimizer(self.learning_rate). \
-                apply_gradients(zip(self.grads, train_variables), global_step=self.global_step)
 
             correctly_predicted_yes = tf.logical_and(self.correct_answers,
                                                      tf.greater_equal(model.yesno_probs, 0.5))
@@ -130,17 +116,10 @@ class YesNoQATrainer(Trainer):
 
         return feed_dict
 
-    def run(self, sess, goal, qa_settings):
-        return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings))
-
 
     @property
     def loss(self):
         return self._loss
-
-    @property
-    def update(self):
-        return self._update
 
     @property
     def train_summaries(self):
