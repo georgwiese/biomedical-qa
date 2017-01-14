@@ -23,22 +23,22 @@ class YesNoGoalDefiner(GoalDefiner):
 
         with tf.variable_scope("yesno_trainer"):
 
-            self.correct_answers = tf.placeholder(tf.bool, [None], "yes")
+            self.correct_is_yes = tf.placeholder(tf.bool, [None], "correct_is_yes")
 
             model = self.model
             self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                model.yesno_scores, tf.cast(self.correct_answers, tf.float32)))
+                model.yesno_scores, tf.cast(self.correct_is_yes, tf.float32)))
 
-            correctly_predicted_yes = tf.logical_and(self.correct_answers,
+            correctly_predicted_yes = tf.logical_and(self.correct_is_yes,
                                                      tf.greater_equal(model.yesno_probs, 0.5))
-            correctly_predicted_no = tf.logical_and(tf.logical_not(self.correct_answers),
+            correctly_predicted_no = tf.logical_and(tf.logical_not(self.correct_is_yes),
                                                     tf.logical_not(tf.greater_equal(model.yesno_probs, 0.5)))
             self.num_correct_yes = tf.reduce_sum(tf.cast(correctly_predicted_yes, tf.int32))
             self.num_correct_no = tf.reduce_sum(tf.cast(correctly_predicted_no, tf.int32))
             self.num_correct = self.num_correct_yes + self.num_correct_no
 
-            self.num_yes = tf.reduce_sum(tf.cast(self.correct_answers, tf.int32))
-            self.num_no = tf.reduce_sum(1 - tf.cast(self.correct_answers, tf.int32))
+            self.num_yes = tf.reduce_sum(tf.cast(self.correct_is_yes, tf.int32))
+            self.num_no = tf.reduce_sum(1 - tf.cast(self.correct_is_yes, tf.int32))
             self.accuracy = tf.cast(self.num_correct, tf.float32) / \
                             tf.cast(self.num_yes + self.num_correct_no, tf.float32)
             self.yes_accuracy = tf.cast(self.num_correct_yes, tf.float32) / \
@@ -53,12 +53,24 @@ class YesNoGoalDefiner(GoalDefiner):
                                        lambda: tf.zeros([]),
                                        lambda: self.no_accuracy)
 
+            self.mean_yes_prob = tf.reduce_sum(tf.where(self.correct_is_yes,
+                                                        model.yesno_probs,
+                                                        tf.zeros(tf.shape(model.yesno_probs)))) \
+                                 / tf.cast(self.num_yes, tf.float32)
+            self.mean_no_prob = tf.reduce_sum(tf.where(tf.logical_not(self.correct_is_yes),
+                                                       model.yesno_probs,
+                                                       tf.zeros(tf.shape(model.yesno_probs)))) \
+                                / tf.cast(self.num_no, tf.float32)
+
             with tf.name_scope("summaries"):
                 self._train_summaries = [
                     tf.scalar_summary("yesno_loss", self._loss),
                     tf.scalar_summary("yesno_acc", self.accuracy),
                     tf.scalar_summary("yesno_yes_acc", self.yes_accuracy),
-                    tf.scalar_summary("yesno_no_acc", self.no_accuracy)
+                    tf.scalar_summary("yesno_no_acc", self.no_accuracy),
+                    tf.scalar_summary("yesno_yes_prob", self.mean_yes_prob),
+                    tf.scalar_summary("yesno_no_prob", self.mean_no_prob),
+                    tf.histogram_summary("yesno_probs", model.yesno_probs),
                 ]
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
@@ -116,7 +128,7 @@ class YesNoGoalDefiner(GoalDefiner):
             correct_answers.append(qa_setting.is_yes)
 
         feed_dict = self.model.get_feed_dict(qa_settings)
-        feed_dict[self.correct_answers] = correct_answers
+        feed_dict[self.correct_is_yes] = correct_answers
 
         return feed_dict
 
