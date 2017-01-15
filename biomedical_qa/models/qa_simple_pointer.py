@@ -313,7 +313,12 @@ class QASimplePointerModel(ExtractionQAModel):
             with tf.variable_scope("yesno_output_module"):
 
                 input = tf.concat(1, [self.question_representation, self.context_representation])
-                self.yesno_scores = tf.contrib.layers.fully_connected(input, 1,
+                input = tf.nn.dropout(input, self.keep_prob)
+
+                hidden = tf.contrib.layers.fully_connected(input, 1,
+                                                           activation_fn=tf.nn.relu,
+                                                           scope="hidden")
+                self.yesno_scores = tf.contrib.layers.fully_connected(hidden, 1,
                                                                       scope="yesno_scores")
                 self.yesno_scores = tf.squeeze(self.yesno_scores)
                 self.yesno_probs = tf.nn.sigmoid(self.yesno_scores)
