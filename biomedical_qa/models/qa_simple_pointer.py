@@ -158,9 +158,10 @@ class QASimplePointerModel(ExtractionQAModel):
 
             self.yesno_added = False
             if self._with_yesno:
-                self.add_yesno()
+                self.add_yesno(add_model_scope=False)
 
             self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
+            print("Train Variables", [v.name for v in self._train_variables])
 
     def _preprocessing_layer(self, rnn_constructor, inputs, length, share_rnn=False,
                              projection_scope=None, num_fusion_layers=0):
@@ -283,13 +284,16 @@ class QASimplePointerModel(ExtractionQAModel):
 
         return contexts, start_scores, starts, start_probs, end_scores, ends, end_probs
 
-    def add_yesno(self):
+    def add_yesno(self, add_model_scope=True):
 
         if self.yesno_added:
             return
         self.yesno_added = True
+        self._with_yesno = True
 
-        with tf.variable_scope("yesno"):
+        scope = self.name + "/yesno" if add_model_scope else "yesno"
+
+        with tf.variable_scope(scope):
 
             with tf.variable_scope("context_representation"):
 
@@ -314,6 +318,9 @@ class QASimplePointerModel(ExtractionQAModel):
                                                                       scope="yesno_scores")
                 self.yesno_scores = tf.squeeze(self.yesno_scores)
                 self.yesno_probs = tf.nn.sigmoid(self.yesno_scores)
+
+        self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
+        print("Train Variables", [v.name for v in self._train_variables])
 
 
     def set_eval(self, sess):

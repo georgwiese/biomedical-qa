@@ -52,6 +52,7 @@ class Trainer(object):
                 self.global_step = tf.get_variable("step", initializer=0, trainable=False)
                 self._lr_decay = tf.placeholder(tf.float32, [], "lr_decay")
                 self._lr_decay_op = self.learning_rate.assign(self.learning_rate * self._lr_decay)
+                print("All Saver Variables:", [v.name for v in tf.global_variables()])
                 self._all_saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
                 self._init()
 
