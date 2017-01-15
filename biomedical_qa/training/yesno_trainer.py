@@ -2,6 +2,7 @@ import sys
 
 import tensorflow as tf
 
+from biomedical_qa.evaluation.yesno_evaluation import YesNoEvaluator
 from biomedical_qa.training.trainer import GoalDefiner
 
 
@@ -76,46 +77,43 @@ class YesNoGoalDefiner(GoalDefiner):
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
 
         self.model.set_eval(sess)
+
         total = 0
-        num_correct_yes = 0
-        num_correct_no = 0
-        num_correct = 0
-        num_yes = 0
-        num_no = 0
+        num_batches = 0
         loss = 0.0
+
         e = sampler.epoch
         sampler.reset()
+
         while sampler.epoch == e and (subsample < 0 or total < subsample):
             batch = sampler.get_batch()
-            _num_correct_yes, _num_correct_no, _num_yes, _num_no, _loss = self.run(
-                sess,
-                [self.num_correct_yes, self.num_correct_no, self.num_yes, self.num_no, self.loss],
-                batch)
-            num_correct_yes += _num_correct_yes
-            num_correct_no += _num_correct_no
-            num_correct += _num_correct_yes + _num_correct_no
-            num_yes += _num_yes
-            num_no += _num_no
+            num_batches += 1
+            [_loss] = self.run(sess, [self.loss], batch)
             loss += _loss
             total += len(batch)
 
             if verbose:
-                sys.stdout.write("\r%d - Acc: %.3f, Yes Acc: %.3f, No Acc: %.3f, Loss: %3f" %
-                                 (total, num_correct / total, num_correct_yes / num_yes,
-                                  num_correct_no / num_no, loss / total))
+                sys.stdout.write("\r%d - Loss: %3f" %
+                                 (total, loss / num_batches))
                 sys.stdout.flush()
 
-        acc = num_correct / total
-        yes_acc = num_correct_yes / num_yes
-        no_acc = num_correct_no / num_no
-        loss /= total
+        loss /= num_batches
         if verbose:
             print("")
+
+        evaluator = YesNoEvaluator(sess, self.model, sampler)
+        threshold, _ = evaluator.find_optimal_threshold()
+        acc, yes_acc, no_acc = evaluator.measure_accuracy(threshold)
+
+        if verbose:
+            print("Acc: %3f, Yes Acc: %3f, No Acc: %3f, Threshold: %3f" %
+                  (acc, yes_acc, no_acc, threshold))
 
         summary = tf.Summary()
         summary.value.add(tag="valid_yesno_acc", simple_value=acc)
         summary.value.add(tag="valid_yesno_yes_acc", simple_value=yes_acc)
         summary.value.add(tag="valid_yesno_no_acc", simple_value=no_acc)
+        summary.value.add(tag="valid_yesno_threshold", simple_value=threshold)
         summary.value.add(tag="valid_yesno_loss", simple_value=loss)
 
         return acc, summary

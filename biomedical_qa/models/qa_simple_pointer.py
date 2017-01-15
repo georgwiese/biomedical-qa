@@ -161,7 +161,6 @@ class QASimplePointerModel(ExtractionQAModel):
                 self.add_yesno(add_model_scope=False)
 
             self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
-            print("Train Variables", [v.name for v in self._train_variables])
 
     def _preprocessing_layer(self, rnn_constructor, inputs, length, share_rnn=False,
                              projection_scope=None, num_fusion_layers=0):
@@ -320,7 +319,6 @@ class QASimplePointerModel(ExtractionQAModel):
                 self.yesno_probs = tf.nn.sigmoid(self.yesno_scores)
 
         self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
-        print("Train Variables", [v.name for v in self._train_variables])
 
 
     def set_eval(self, sess):
