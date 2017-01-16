@@ -315,7 +315,7 @@ class QASimplePointerModel(ExtractionQAModel):
                 input = tf.concat(1, [self.question_representation, self.context_representation])
                 input = tf.nn.dropout(input, self.keep_prob)
 
-                hidden = tf.contrib.layers.fully_connected(input, 1,
+                hidden = tf.contrib.layers.fully_connected(input, self.size,
                                                            activation_fn=tf.nn.relu,
                                                            scope="hidden")
                 self.yesno_scores = tf.contrib.layers.fully_connected(hidden, 1,
