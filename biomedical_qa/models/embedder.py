@@ -9,6 +9,7 @@ Learning to read, unsupervised
 import tensorflow as tf
 import numpy as np
 import math
+import pickle
 
 from biomedical_qa import tfutil
 from biomedical_qa.models.model import ConfigurableModel
@@ -207,8 +208,10 @@ class WordEmbedder(Embedder):
 
 class ConstantWordEmbedder(WordEmbedder):
 
-    def __init__(self, size, vocab, unk_id, embeddings, name="Embedder", reuse=False, inputs=None, seq_lengths=None):
+    def __init__(self, size, vocab, unk_id, embeddings, name="Embedder",
+                 reuse=False, inputs=None, seq_lengths=None, embeddings_config=None):
         self._embeddings = embeddings
+        self.embeddings_config = embeddings_config
         super().__init__(size, len(vocab), vocab, unk_id, name, reuse, inputs, seq_lengths)
 
     def _init(self):
@@ -250,7 +253,10 @@ class ConstantWordEmbedder(WordEmbedder):
     def get_config(self):
         config = dict()
         config["size"] = self.size
-        config["embeddings"] = self._embeddings
+        if self.embeddings_config is not None:
+            config["embeddings_config"] = self.embeddings_config
+        else:
+            config["embeddings"] = self._embeddings
         config["vocab"] = self.vocab
         config["unk_id"] = self._unk_id
         config["name"] = self.name
@@ -269,15 +275,23 @@ class ConstantWordEmbedder(WordEmbedder):
         """
         # todo: load parameters of the model
         # todo: dump config dictionary as json
+
+        if "embeddings_config" in config:
+            with open(config["embeddings_config"], "rb") as f:
+                embeddings = pickle.load(f)
+        else:
+            embeddings = config["embeddings"]
+
         autoreader = ConstantWordEmbedder(
             config["size"],
             config["vocab"],
             config["unk_id"],
-            config["embeddings"],
+            embeddings,
             name=config.get("name", "AutoReader"),
             reuse=reuse,
             inputs=inputs,
-            seq_lengths=seq_lengths
+            seq_lengths=seq_lengths,
+            embeddings_config=config.get("embeddings_config", None)
         )
 
         return autoreader
