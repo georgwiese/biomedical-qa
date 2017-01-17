@@ -4,7 +4,8 @@ import numpy as np
 
 class BeamSearchDecoderResult(object):
 
-    def __init__(self, context_indices, starts, ends, probs):
+    def __init__(self, context_indices, starts, ends, probs,
+                 start_probs, end_probs):
 
         assert len(context_indices) == len(starts) == len(ends) == len(probs)
 
@@ -12,6 +13,8 @@ class BeamSearchDecoderResult(object):
         self.starts = starts
         self.ends = ends
         self.probs = probs
+        self.start_probs = start_probs
+        self.end_probs = end_probs
 
     def __iter__(self):
 
@@ -81,7 +84,9 @@ class BeamSearchDecoder(object):
         return [BeamSearchDecoderResult(context_indices=contexts[i],
                                         starts=starts[i],
                                         ends=ends[i],
-                                        probs=probs[i])
+                                        probs=probs[i],
+                                        start_probs=start_probs,
+                                        end_probs=end_probs)
                 for i in range(num_questions)]
 
     def _compute_top_starts(self, start_probs, context_partition):
