@@ -5,7 +5,7 @@ import numpy as np
 from biomedical_qa.inference.inference import Inferrer, get_model_and_session
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
-from biomedical_qa.training.qa_trainer import ExtractionQATrainer
+from biomedical_qa.training.qa_trainer import ExtractionGoalDefiner
 from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 
 tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file.')
@@ -74,7 +74,7 @@ def main():
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
-        trainer = ExtractionQATrainer(0, inferrer.model, devices[0])
+        trainer = ExtractionGoalDefiner(inferrer.model, devices[0])
         trainer.eval(inferrer.sess, sampler, verbose=True)
 
     if FLAGS.bioasq_evaluation:
