@@ -36,6 +36,7 @@ class ExtractionGoalDefiner(GoalDefiner):
         self.answer_question_partition = tf.segment_max(self.question_partition, self.answer_partition)
 
         model = self.model
+        self._train_summaries = []
 
         if model.start_output_unit == "softmax":
             start_loss = self.softmax_start_loss(model)
@@ -82,7 +83,7 @@ class ExtractionGoalDefiner(GoalDefiner):
                                             self.question_partition)
 
         with tf.name_scope("summaries"):
-            self._train_summaries = [
+            self._train_summaries += [
                 tf.scalar_summary("loss", self._loss),
                 tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss)),
                 tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss)),
