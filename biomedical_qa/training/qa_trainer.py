@@ -138,7 +138,7 @@ class ExtractionGoalDefiner(GoalDefiner):
                 incorrect_start_scores, tf.zeros(tf.shape(incorrect_start_scores)))
 
         # Bring incorrect_start_loss into [Q] shape
-        incorrect_start_loss = tf.segment_mean(tf.reduce_mean(incorrect_start_loss, axis=1),
+        incorrect_start_loss = tf.segment_sum(tf.reduce_sum(incorrect_start_loss, axis=1),
                                                model.context_partition)
         # Now, expand to [len(answers)] shape to match correct_start_loss
         incorrect_start_loss = tf.gather(incorrect_start_loss, self.question_partition)
