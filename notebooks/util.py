@@ -96,13 +96,17 @@ def softmax(w):
 
 def find_correct_tokens(qa_setting):
     """Returns a boolean np array of length len(tokens) that states if the token is part of an answer."""
-    answers = qa_setting.answers
-    tokens = qa_setting.context
+    answers = [answer_option for answer in qa_setting.answers
+                             for answer_option in answer] 
+    tokens = [w for context in qa_setting.contexts
+                for w in context]
+    
     
     is_correct = np.zeros(len(tokens), dtype=np.bool)
     for i, start_token in enumerate(tokens):
         for answer in answers:
-            if start_token == answer[0] and len(tokens) - i >= len(answer):
+            if start_token == answer[0]: #and len(tokens) - i >= len(answer):
+                is_correct[i] = True
                 all_correct = True
                 for j in range(1, len(answer)):
                     all_correct &= tokens[i + j] == answer[j]
