@@ -115,3 +115,20 @@ def find_correct_tokens(qa_setting):
                         is_correct[i + j] = True
     
     return is_correct
+
+def get_tokens(prediction, rev_vocab):
+    return [rev_vocab[w] for context in prediction.question.contexts
+                         for w in context]
+
+def print_prediction(prediction, rev_vocab):
+    tokens = get_tokens(prediction, rev_vocab)
+
+    print("Id:")
+    print("  " + prediction.question.id)
+    print("Question:")
+    print("  " + prediction.question.question_json["question"])
+    print("Answers:")
+    print_list(maybe_flatten_list(prediction.question.question_json["original_answers"]))
+    print("Predicted Answers:")
+    print_list(zip(prediction.answer_strings[:5], prediction.answer_probs[:5]))
+    print()
