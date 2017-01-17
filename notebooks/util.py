@@ -120,7 +120,7 @@ def get_tokens(prediction, rev_vocab):
     return [rev_vocab[w] for context in prediction.question.contexts
                          for w in context]
 
-def print_prediction(prediction, rev_vocab):
+def print_prediction(prediction, rev_vocab, top_k=5):
     tokens = get_tokens(prediction, rev_vocab)
 
     print("Id:")
@@ -130,5 +130,5 @@ def print_prediction(prediction, rev_vocab):
     print("Answers:")
     print_list(maybe_flatten_list(prediction.question.question_json["original_answers"]))
     print("Predicted Answers:")
-    print_list(zip(prediction.answer_strings[:5], prediction.answer_probs[:5]))
+    print_list(zip(prediction.answer_strings[:top_k], prediction.answer_probs[:top_k]))
     print()
