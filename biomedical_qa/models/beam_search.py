@@ -85,8 +85,8 @@ class BeamSearchDecoder(object):
                                         starts=starts[i],
                                         ends=ends[i],
                                         probs=probs[i],
-                                        start_probs=start_probs,
-                                        end_probs=end_probs)
+                                        start_probs=start_probs[i],
+                                        end_probs=end_probs[i])
                 for i in range(num_questions)]
 
     def _compute_top_starts(self, start_probs, context_partition):
