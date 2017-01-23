@@ -42,6 +42,7 @@ tf.app.flags.DEFINE_string("model_type", "qa_pointer", "[pointer, simple_pointer
 
 # qa_simple_pointer settings
 tf.app.flags.DEFINE_bool("with_fusion", False, "Whether Inter & Intra fusion is activated.")
+tf.app.flags.DEFINE_bool("with_question_type_features", False, "Whether Question types are passed to the network.")
 
 # qa_pointer settings
 tf.app.flags.DEFINE_string("answer_layer_type", "dpn", "Type of answer layer ([dpn]).")
@@ -136,11 +137,11 @@ with tf.Session(config=config) as sess:
         print("Creating model of type %s..." % FLAGS.model_type)
         if FLAGS.model_type == "pointer":
             model = QAPointerModel(FLAGS.size, transfer_model, devices=devices,
-                                         keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
-                                         answer_layer_depth=FLAGS.answer_layer_depth,
-                                         answer_layer_poolsize=FLAGS.answer_layer_poolsize,
-                                         answer_layer_type=FLAGS.answer_layer_type,
-                                         start_output_unit=FLAGS.start_output_unit)
+                                   keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
+                                   answer_layer_depth=FLAGS.answer_layer_depth,
+                                   answer_layer_poolsize=FLAGS.answer_layer_poolsize,
+                                   answer_layer_type=FLAGS.answer_layer_type,
+                                   start_output_unit=FLAGS.start_output_unit)
         elif FLAGS.model_type == "simple_pointer":
             with_inter_fusion = FLAGS.with_fusion
             num_intrafusion_layers = 1 if FLAGS.with_fusion else 0
@@ -148,7 +149,8 @@ with tf.Session(config=config) as sess:
                                          keep_prob=1.0-FLAGS.dropout, composition=FLAGS.composition,
                                          num_intrafusion_layers=num_intrafusion_layers,
                                          with_inter_fusion=with_inter_fusion,
-                                         start_output_unit=FLAGS.start_output_unit)
+                                         start_output_unit=FLAGS.start_output_unit,
+                                         with_question_type_features=FLAGS.with_question_type_features)
         else:
             raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 

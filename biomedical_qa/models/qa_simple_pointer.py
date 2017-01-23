@@ -13,7 +13,7 @@ class QASimplePointerModel(ExtractionQAModel):
 
     def __init__(self, size, embedder, keep_prob=1.0, composition="LSTM", devices=None, name="QASimplePointerModel",
                  with_features=True, num_intrafusion_layers=1, with_inter_fusion=True, layer_norm=False,
-                 start_output_unit="softmax", with_yesno=False):
+                 start_output_unit="softmax", with_yesno=False, with_question_type_features=False):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1%len(devices)] if devices is not None else "/cpu:0"
@@ -22,6 +22,7 @@ class QASimplePointerModel(ExtractionQAModel):
         self._with_inter_fusion = with_inter_fusion
         self._layer_norm = layer_norm
         self._with_yesno = with_yesno
+        self._with_question_type_features = with_question_type_features
         self.start_output_unit = start_output_unit
         assert start_output_unit in ["softmax", "sigmoid"]
         ExtractionQAModel.__init__(self, size, embedder, keep_prob, name)
@@ -55,35 +56,9 @@ class QASimplePointerModel(ExtractionQAModel):
                                                            mask_right=False)
 
             with tf.variable_scope("preprocessing_layer"):
-                if self._with_features:
-                    in_question_feature = tf.ones(tf.pack([self.question_embedder.batch_size,
-                                                           self.question_embedder.max_length, 2]))
-                    embedded_question = tf.concat(2, [self.embedded_question, in_question_feature])
-                else:
-                    embedded_question = self.embedded_question
 
-                self.encoded_question = self._preprocessing_layer(rnn_constructor, embedded_question,
-                                                                  self.question_length, projection_scope="question_proj")
-
-                # single time attention over question
-                attention_scores = tf.contrib.layers.fully_connected(self.encoded_question, 1,
-                                                                     activation_fn=None,
-                                                                     weights_initializer=None,
-                                                                     biases_initializer=None,
-                                                                     scope="attention")
-                attention_scores = attention_scores + tf.expand_dims(
-                    tfutil.mask_for_lengths(self.question_length, self.question_embedder.batch_size,
-                                            self.question_embedder.max_length), 2)
-                attention_weights = tf.nn.softmax(attention_scores, 1)
-                self.question_attention_weights = attention_weights
-                self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
-
-                # Multiply question features for each paragraph
-                self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
-                self._embedded_question_not_dropped = tf.gather(self._embedded_question_not_dropped, self.context_partition)
-                self.question_representation_per_context = tf.gather(self.question_representation, self.context_partition)
-                self.question_length = tf.gather(self.question_length, self.context_partition)
                 question_binary_mask = tf.gather(question_binary_mask, self.context_partition)
+                self._embedded_question_not_dropped = tf.gather(self._embedded_question_not_dropped, self.context_partition)
 
                 # context
                 if self._with_features:
@@ -106,12 +81,60 @@ class QASimplePointerModel(ExtractionQAModel):
                                                           tf.expand_dims(q2c_weights,  2)])
 
                     embedded_ctxt = tf.concat(2, [self.embedded_context, self.context_features])
+
+
+                    in_question_feature = tf.ones(tf.pack([self.question_embedder.batch_size,
+                                                           self.question_embedder.max_length, 2]))
+                    embedded_question = tf.concat(2, [self.embedded_question, in_question_feature])
                 else:
                     embedded_ctxt = self.embedded_context
+                    embedded_question = self.embedded_question
+
+                if self._with_question_type_features:
+                    # Need to add another zero vector so that the total number
+                    # of features is even, for LSTM performance reasons.
+                    question_type_features = tf.pack([self._is_factoid,
+                                                      self._is_list,
+                                                      self._is_yesno,
+                                                      tf.zeros(tf.shape(self._is_list),
+                                                               dtype=tf.bool)],
+                                                     axis=1)
+                    question_type_features = tf.cast(question_type_features, tf.float32)
+                    question_type_features = tf.expand_dims(question_type_features, 1)
+
+                    embedded_question = tf.concat(2, [embedded_question,
+                                                      tf.tile(question_type_features,
+                                                              tf.pack([1, tf.shape(embedded_question)[1], 1]))])
+
+                    question_type_features = tf.gather(question_type_features, self.context_partition)
+                    embedded_ctxt = tf.concat(2, [embedded_ctxt,
+                                                  tf.tile(question_type_features,
+                                                          tf.pack([1, tf.shape(embedded_ctxt)[1], 1]))])
+
+                self.encoded_question = self._preprocessing_layer(rnn_constructor, embedded_question,
+                                                                  self.question_length, projection_scope="question_proj")
 
                 self.encoded_ctxt = self._preprocessing_layer(rnn_constructor, embedded_ctxt, self.context_length,
                                                               share_rnn=True, projection_scope="context_proj",
                                                               num_fusion_layers=self._num_intrafusion_layers)
+
+                # single time attention over question
+                attention_scores = tf.contrib.layers.fully_connected(self.encoded_question, 1,
+                                                                     activation_fn=None,
+                                                                     weights_initializer=None,
+                                                                     biases_initializer=None,
+                                                                     scope="attention")
+                attention_scores = attention_scores + tf.expand_dims(
+                    tfutil.mask_for_lengths(self.question_length, self.question_embedder.batch_size,
+                                            self.question_embedder.max_length), 2)
+                attention_weights = tf.nn.softmax(attention_scores, 1)
+                self.question_attention_weights = attention_weights
+                self.question_representation = tf.reduce_sum(attention_weights * self.encoded_question, [1])
+
+                # Multiply question features for each paragraph
+                self.encoded_question = tf.gather(self.encoded_question, self.context_partition)
+                self.question_representation_per_context = tf.gather(self.question_representation, self.context_partition)
+                self.question_length = tf.gather(self.question_length, self.context_partition)
 
             if self._with_inter_fusion:
                 with tf.variable_scope("inter_fusion"):
@@ -320,7 +343,7 @@ class QASimplePointerModel(ExtractionQAModel):
                                                            scope="hidden")
                 self.yesno_scores = tf.contrib.layers.fully_connected(hidden, 1,
                                                                       scope="yesno_scores")
-                self.yesno_scores = tf.squeeze(self.yesno_scores)
+                self.yesno_scores = tf.reshape(self.yesno_scores, [-1])
                 self.yesno_probs = tf.nn.sigmoid(self.yesno_scores)
 
         self._train_variables = [p for p in tf.trainable_variables() if self.name in p.name]
@@ -367,6 +390,7 @@ class QASimplePointerModel(ExtractionQAModel):
         config["composition"] = self._composition
         config["start_output_unit"] = self.start_output_unit
         config["with_yesno"] = self._with_yesno
+        config["with_question_type_features"] = self._with_question_type_features
         return config
 
 
@@ -394,7 +418,8 @@ class QASimplePointerModel(ExtractionQAModel):
             num_intrafusion_layers=config["num_intrafusion_layers"],
             layer_norm=config.get("layer_norm", False),
             start_output_unit=config["start_output_unit"],
-            with_yesno=config.get("with_yesno", False))
+            with_yesno=config.get("with_yesno", False),
+            with_question_type_features=config.get("with_question_type_features", False))
 
         return qa_model
 

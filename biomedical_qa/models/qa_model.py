@@ -91,6 +91,11 @@ class ExtractionQAModel(QAModel):
             self._set_top_k = self.top_k.assign(self._top_k_placeholder)
             self._word_in_question = tf.placeholder(tf.float32, [None, None], "word_in_question")
 
+            # Question Type features
+            self._is_factoid = tf.placeholder(tf.bool, [None], "is_factoid")
+            self._is_list = tf.placeholder(tf.bool, [None], "is_list")
+            self._is_yesno = tf.placeholder(tf.bool, [None], "is_yesno")
+
             # Maps context index to question index
             self.context_partition = tf.placeholder(tf.int64, [None], "context_partition")
 
@@ -147,6 +152,10 @@ class ExtractionQAModel(QAModel):
 
         is_q_word = []
 
+        is_factoid = []
+        is_list = []
+        is_yesno = []
+
         context_partition = []
 
         max_q_length = max([len(s.question) for s in qa_settings])
@@ -154,6 +163,10 @@ class ExtractionQAModel(QAModel):
         for i, qa_setting in enumerate(qa_settings):
             question.append(qa_setting.question + [0] * (max_q_length - len(qa_setting.question)))
             question_length.append(len(qa_setting.question))
+
+            is_factoid.append(qa_setting.q_type == "factoid")
+            is_list.append(qa_setting.q_type == "list")
+            is_yesno.append(qa_setting.q_type == "yesno")
 
             assert len(qa_setting.contexts) > 0
             for c in qa_setting.contexts:
@@ -164,6 +177,9 @@ class ExtractionQAModel(QAModel):
 
         feed_dict = dict()
         feed_dict[self.context_partition] = context_partition
+        feed_dict[self._is_list] = is_list
+        feed_dict[self._is_factoid] = is_factoid
+        feed_dict[self._is_yesno] = is_yesno
         feed_dict.update(self.embedder.get_feed_dict(context, context_length))
         feed_dict.update(self.question_embedder.get_feed_dict(question, question_length))
         feed_dict[self._word_in_question] = is_q_word
