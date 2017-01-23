@@ -50,6 +50,9 @@ def split_bioasq(bioasq_file_path, out_dir, dev_id_file):
 
     os.makedirs(out_dir, exist_ok=True)
 
+    print("Train Questions:", len(train_questions))
+    print("Dev Questions:", len(dev_questions))
+
     with open(os.path.join(out_dir, "dev.json"), "w") as f:
         json.dump({"questions": dev_questions}, f, indent=2)
     with open(os.path.join(out_dir, "train.json"), "w") as f:

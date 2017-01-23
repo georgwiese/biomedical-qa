@@ -241,10 +241,9 @@ class BioAsqGoalDefiner(ExtractionGoalDefiner):
 
 
     def __init__(self, model, device,
-                 beam_size=10, list_answer_count=5):
+                 beam_size=10):
 
         self._beam_size = beam_size
-        self._list_answer_count = list_answer_count
         ExtractionGoalDefiner.__init__(self, model, device)
 
 
@@ -256,9 +255,10 @@ class BioAsqGoalDefiner(ExtractionGoalDefiner):
         inferrer = Inferrer(self.model, sess, self._beam_size)
         evaluator = BioAsqEvaluator(sampler, inferrer)
 
-        list_threshold, _ = evaluator.find_optimal_threshold(0.001)
+        list_threshold, _ = evaluator.find_optimal_threshold(0.01)
+        answer_count, _ = evaluator.find_optimal_answer_count()
         _, factoid_mrr, list_f1, _, _ = evaluator.evaluate(list_answer_prob_threshold=list_threshold,
-                                                           list_answer_count=self._list_answer_count)
+                                                           list_answer_count=answer_count)
 
         performance = (factoid_mrr + list_f1) / 2
 

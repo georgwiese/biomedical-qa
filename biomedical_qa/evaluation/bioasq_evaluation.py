@@ -84,8 +84,8 @@ class BioAsqEvaluator(object):
         return best_answer_count, best_f1
 
 
-    def evaluate(self, verbosity_level=0, list_answer_count=5,
-                 list_answer_prob_threshold=0.5):
+    def evaluate(self, verbosity_level=0, list_answer_count=None,
+                 list_answer_prob_threshold=None):
 
         self.initialize_predictions_if_needed(verbosity_level)
 
@@ -184,16 +184,27 @@ class BioAsqEvaluator(object):
 
 
     def evaluate_list_question(self, answers, correct_answers,
-                               list_answer_count, list_answer_prob_threshold):
+                               list_answer_count=None,
+                               list_answer_prob_threshold=None):
 
-        if self.inferrer.model.start_output_unit == "sigmoid":
+        if self.inferrer.model.start_output_unit == "sigmoid" and \
+                list_answer_prob_threshold is not None:
             # We get individual probabilities for each answer, can threshold.
             filtered_answers = [(a, prob) for a, prob in answers
                                 if prob >= list_answer_prob_threshold]
             answers = filtered_answers if len(filtered_answers) > 0 else answers[:1]
-        else:
+        elif list_answer_count is not None:
             # We can't apply an absolute threshold, so use a fixed count.
             answers = answers[:list_answer_count]
+        else:
+            # We find the best possible cutoff
+            new_answers, f1, precision, recall = None, None, None, None
+            for count in range(1, 20):
+                _answers, _f1, _precision, _recall = self.evaluate_list_question(
+                        answers, correct_answers, list_answer_count=count)
+                if f1 is None or _f1 > f1:
+                    new_answers, f1, precision, recall = _answers, _f1, _precision, _recall
+            return new_answers, f1, precision, recall
 
         answer_correct = np.zeros([len(answers)], dtype=np.bool)
 

@@ -29,6 +29,7 @@ tf.app.flags.DEFINE_boolean("squad_evaluation", False, "If true, measures F1 and
 tf.app.flags.DEFINE_boolean("bioasq_evaluation", False, "If true, runs BioASQ evaluation measures.")
 tf.app.flags.DEFINE_boolean("find_optimal_threshold", False, "If true, will find the threshold which optimizes list performance.")
 tf.app.flags.DEFINE_boolean("find_optimal_answer_count", False, "If true, will find the answer count which optimizes list performance.")
+tf.app.flags.DEFINE_boolean("find_perfect_cutoff", False, "If true, cut off each list such that F1 is maximized.")
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
 
 tf.app.flags.DEFINE_float("threshold_search_step", 0.01, "Step size to use for threshold search.")
@@ -92,5 +93,9 @@ def main():
     if FLAGS.find_optimal_answer_count:
         evaluator = BioAsqEvaluator(list_sampler, inferrer)
         evaluator.find_optimal_answer_count(verbosity_level=2 if FLAGS.verbose else 1)
+
+    if FLAGS.find_perfect_cutoff:
+        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        evaluator.evaluate(verbosity_level=2 if FLAGS.verbose else 1)
 
 main()
