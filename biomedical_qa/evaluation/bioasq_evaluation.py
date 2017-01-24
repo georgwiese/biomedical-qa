@@ -121,33 +121,25 @@ class BioAsqEvaluator(object):
 
             if question_type == "factoid":
 
-                first_correct, rank = self.evaluate_factoid_question(
-                        answers, correct_answers)
+                rank = self.evaluate_factoid_question(
+                        answers, correct_answers,
+                        verbosity_level=verbosity_level)
 
                 factoid_total += 1
-
-                if first_correct:
-                    if verbosity_level > 1:
-                        print("  Correct!")
+                if rank == 1:
                     factoid_correct += 1
 
-                if verbosity_level > 1:
-                    print("  Rank: %d" % (rank if rank <= 5 else -1))
                 factoid_reciprocal_rank_sum += 1 / rank if rank <= 5 else 0
 
 
             if question_type == "list":
 
-                used_answers, f1, precision, recall = self.evaluate_list_question(
+                f1, precision, recall = self.evaluate_list_question(
                         answers, correct_answers, list_answer_count,
-                        list_answer_prob_threshold)
+                        list_answer_prob_threshold,
+                    verbosity_level=verbosity_level)
                 list_total += 1
 
-                if verbosity_level > 1:
-                    print("  Using answers:", [a for a, _ in used_answers])
-
-                if verbosity_level > 1:
-                    print("F1: %f, precision: %f, recall: %f" % (f1, precision, recall))
                 list_f1_sum += f1
                 list_precision_sum += precision
                 list_recall_sum += recall
@@ -166,26 +158,29 @@ class BioAsqEvaluator(object):
         return factoid_acc, factoid_mrr, list_f1, list_precision, list_recall
 
 
-    def evaluate_factoid_question(self, answers, correct_answers):
+    def evaluate_factoid_question(self, answers, correct_answers,
+                                  verbosity_level=0):
 
-        first_correct = False
         rank = sys.maxsize
         for correct_answer in correct_answers[0]:
-            # Compute exact match
-            if not first_correct and \
-                    answers[0][0].lower() == correct_answer.lower():
-                first_correct = True
             # Compute rank
             for k in range(min(len(answers), 5)):
                 if answers[k][0].lower() == correct_answer.lower():
                     rank = min(rank, k + 1)
 
-        return first_correct, rank
+
+        if verbosity_level > 1:
+            if rank == 1:
+                print("  Correct!")
+            print("  Rank: %d" % (rank if rank <= 5 else -1))
+
+        return rank
 
 
     def evaluate_list_question(self, answers, correct_answers,
                                list_answer_count=None,
-                               list_answer_prob_threshold=None):
+                               list_answer_prob_threshold=None,
+                               verbosity_level=0):
 
         if self.inferrer.model.start_output_unit == "sigmoid" and \
                 list_answer_prob_threshold is not None:
@@ -198,13 +193,13 @@ class BioAsqEvaluator(object):
             answers = answers[:list_answer_count]
         else:
             # We find the best possible cutoff
-            new_answers, f1, precision, recall = None, None, None, None
+            f1, precision, recall = None, None, None
             for count in range(1, 20):
-                _answers, _f1, _precision, _recall = self.evaluate_list_question(
+                _f1, _precision, _recall = self.evaluate_list_question(
                         answers, correct_answers, list_answer_count=count)
                 if f1 is None or _f1 > f1:
-                    new_answers, f1, precision, recall = _answers, _f1, _precision, _recall
-            return new_answers, f1, precision, recall
+                    f1, precision, recall = _f1, _precision, _recall
+            return f1, precision, recall
 
         answer_correct = np.zeros([len(answers)], dtype=np.bool)
 
@@ -227,4 +222,8 @@ class BioAsqEvaluator(object):
         else:
             f1 = 0
 
-        return answers, f1, precision, recall
+        if verbosity_level > 1:
+            print("  Using answers:", [a for a, _ in answers])
+            print("F1: %f, precision: %f, recall: %f" % (f1, precision, recall))
+
+        return f1, precision, recall
