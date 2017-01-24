@@ -2,7 +2,7 @@ import os
 import tensorflow as tf
 import numpy as np
 
-from biomedical_qa.inference.inference import Inferrer, get_model_and_session
+from biomedical_qa.inference.inference import Inferrer, get_model, get_session
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionGoalDefiner
@@ -41,8 +41,8 @@ FLAGS = tf.app.flags.FLAGS
 def main():
     devices = FLAGS.devices.split(",")
 
-    model, sess = get_model_and_session(FLAGS.model_config, devices,
-                                        FLAGS.model_weights)
+    sess = get_session()
+    model = get_model(sess, FLAGS.model_config, devices, FLAGS.model_weights)
     inferrer = Inferrer(model, sess, FLAGS.beam_size)
 
     print("Initializing Sampler & Trainer...")

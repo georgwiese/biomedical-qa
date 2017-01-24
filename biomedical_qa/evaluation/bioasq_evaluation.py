@@ -5,6 +5,13 @@ import numpy as np
 
 from biomedical_qa.data.bioasq_squad_builder import ensure_list_depth_2
 
+
+def element_wise_mean(list_of_tuples):
+
+    lists = list(zip(*list_of_tuples))
+    return [sum(l) / len(l) for l in lists]
+
+
 class BioAsqEvaluator(object):
 
 
@@ -152,11 +159,11 @@ class BioAsqEvaluator(object):
         list_f1, list_precision, list_recall = 0.0, 0.0, 0.0
 
         if len(factoid_performances):
-            factoid_acc, factoid_mrr = self.element_wise_mean(factoid_performances.values())
+            factoid_acc, factoid_mrr = element_wise_mean(factoid_performances.values())
             factoid_correct = int(factoid_acc * len(factoid_performances))
 
         if len(list_performances):
-            list_f1, list_precision, list_recall = self.element_wise_mean(list_performances.values())
+            list_f1, list_precision, list_recall = element_wise_mean(list_performances.values())
 
         if verbosity_level > 0:
             print("Factoid correct: %d / %d" % (factoid_correct, len(factoid_performances)))
@@ -164,12 +171,6 @@ class BioAsqEvaluator(object):
             print("List mean F1: %f (%d Questions)" % (list_f1, len(list_performances)))
 
         return factoid_acc, factoid_mrr, list_f1, list_precision, list_recall
-
-
-    def element_wise_mean(self, list_of_tuples):
-
-        lists = list(zip(*list_of_tuples))
-        return [sum(l) / len(l) for l in lists]
 
 
     def evaluate_factoid_question(self, answers, correct_answers,

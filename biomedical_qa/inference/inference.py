@@ -23,7 +23,7 @@ class InferenceResult(object):
         return zip(self.answer_strings, self.answer_probs)
 
 
-def get_model_and_session(model_config_file, devices, model_weights_file=None):
+def get_model(sess, model_config_file, devices, model_weights_file=None):
 
 
     print("Loading Model...")
@@ -37,13 +37,16 @@ def get_model_and_session(model_config_file, devices, model_weights_file=None):
         print("Using weights: %s" % model_weights_file)
 
     print("Restoring Weights...")
-    config = tf.ConfigProto(allow_soft_placement=True)
-    config.gpu_options.allow_growth = True
-    sess = tf.Session(config=config)
     sess.run(tf.global_variables_initializer())
     model.model_saver.restore(sess, model_weights_file)
 
-    return model, sess
+    return model
+
+
+def get_session():
+    config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
+    return tf.Session(config=config)
 
 
 class Inferrer(object):
