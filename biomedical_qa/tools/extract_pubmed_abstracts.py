@@ -33,6 +33,7 @@ def process_tarfile(tar):
             abstract_xml = ET.tostring(root.find("**/abstract")).decode("utf-8")
 
             data.append({
+                "id": member.name,
                 "title": title,
                 "abstract_xml": abstract_xml,
             })
