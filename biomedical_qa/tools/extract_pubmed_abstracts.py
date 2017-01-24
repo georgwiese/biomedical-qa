@@ -3,6 +3,7 @@ import os
 import tarfile
 import json
 import xml.etree.ElementTree as ET
+import logging
 
 tf.app.flags.DEFINE_string('data_dir', None, 'Path to directory containing all tar.gz files.')
 tf.app.flags.DEFINE_string('out_json', None, 'Path to the output JSON file.')
@@ -30,7 +31,11 @@ def process_tarfile(tar):
             if title is None or title[-1] != "?":
                 continue
 
-            abstract_xml = ET.tostring(root.find("**/abstract")).decode("utf-8")
+            abstract_node = root.find("**/abstract")
+            if abstract_node is None:
+                logging.warning("No abstract:", member.name)
+                continue
+            abstract_xml = ET.tostring(abstract_node).decode("utf-8")
 
             data.append({
                 "id": member.name,
