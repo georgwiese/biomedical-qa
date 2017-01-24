@@ -26,7 +26,12 @@ def process_tarfile(tar):
 
         with tar.extractfile(member) as f:
             root = ET.parse(f).getroot()
-            title = root.find("front/article-meta/title-group/article-title").text
+            title_node = root.find("front/article-meta/title-group/article-title")
+
+            if title_node is None or title_node.text is None:
+                logging.warning("No title:", member.name)
+
+            title = title_node.text
 
             if title is None or title[-1] != "?":
                 continue
