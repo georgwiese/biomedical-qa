@@ -84,8 +84,8 @@ class BioAsqEvaluator(object):
         return best_answer_count, best_f1
 
 
-    def evaluate(self, verbosity_level=0, list_answer_count=None,
-                 list_answer_prob_threshold=None):
+    def evaluate_questions(self, verbosity_level=0, list_answer_count=None,
+                           list_answer_prob_threshold=None):
 
         self.initialize_predictions_if_needed(verbosity_level)
 
@@ -99,9 +99,10 @@ class BioAsqEvaluator(object):
             print("  (Questions: %d, using %d)" %
                   (count, subsample if subsample is not None else count))
 
-        factoid_correct, factoid_total = 0, 0
-        factoid_reciprocal_rank_sum = 0
-        list_f1_sum, list_precision_sum, list_recall_sum, list_total = 0, 0, 0, 0
+        # <question id> -> (is_correct, reciprocal_rank)
+        factoid_performances = {}
+        # <question id> -> (f1, precision, recall)
+        list_performances = {}
 
         for question in self.sampler.get_questions():
 
@@ -122,40 +123,53 @@ class BioAsqEvaluator(object):
             if question_type == "factoid":
 
                 rank = self.evaluate_factoid_question(
-                        answers, correct_answers,
-                        verbosity_level=verbosity_level)
+                    answers, correct_answers,
+                    verbosity_level=verbosity_level)
 
-                factoid_total += 1
-                if rank == 1:
-                    factoid_correct += 1
-
-                factoid_reciprocal_rank_sum += 1 / rank if rank <= 5 else 0
+                reciprocal_rank = 1 / rank if rank <= 5 else 0
+                factoid_performances[question.id] = (rank == 1, reciprocal_rank)
 
 
             if question_type == "list":
 
                 f1, precision, recall = self.evaluate_list_question(
-                        answers, correct_answers, list_answer_count,
-                        list_answer_prob_threshold,
+                    answers, correct_answers, list_answer_count,
+                    list_answer_prob_threshold,
                     verbosity_level=verbosity_level)
-                list_total += 1
 
-                list_f1_sum += f1
-                list_precision_sum += precision
-                list_recall_sum += recall
+                list_performances[question.id] = (f1, precision, recall)
 
-        factoid_acc = factoid_correct / factoid_total if factoid_total else 0
-        factoid_mrr = factoid_reciprocal_rank_sum / factoid_total if factoid_total else 0
-        list_f1 = list_f1_sum / list_total if list_total else 0
-        list_precision = list_precision_sum / list_total if list_total else 0
-        list_recall = list_recall_sum / list_total if list_total else 0
+        return factoid_performances, list_performances
+
+
+    def evaluate(self, verbosity_level=0, list_answer_count=None,
+                 list_answer_prob_threshold=None):
+
+        factoid_performances, list_performances = self.evaluate_questions(
+                verbosity_level, list_answer_count, list_answer_prob_threshold)
+
+        factoid_acc, factoid_mrr, factoid_correct = 0.0, 0.0, 0
+        list_f1, list_precision, list_recall = 0.0, 0.0, 0.0
+
+        if len(factoid_performances):
+            factoid_acc, factoid_mrr = self.element_wise_mean(factoid_performances.values())
+            factoid_correct = int(factoid_acc * len(factoid_performances))
+
+        if len(list_performances):
+            list_f1, list_precision, list_recall = self.element_wise_mean(list_performances.values())
 
         if verbosity_level > 0:
-            print("Factoid correct: %d / %d" % (factoid_correct, factoid_total))
+            print("Factoid correct: %d / %d" % (factoid_correct, len(factoid_performances)))
             print("Factoid MRR: %f" % factoid_mrr)
-            print("List mean F1: %f (%d Questions)" % (list_f1, list_total))
+            print("List mean F1: %f (%d Questions)" % (list_f1, len(list_performances)))
 
         return factoid_acc, factoid_mrr, list_f1, list_precision, list_recall
+
+
+    def element_wise_mean(self, list_of_tuples):
+
+        lists = list(zip(*list_of_tuples))
+        return [sum(l) / len(l) for l in lists]
 
 
     def evaluate_factoid_question(self, answers, correct_answers,
