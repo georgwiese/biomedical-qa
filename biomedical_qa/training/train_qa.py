@@ -222,13 +222,15 @@ with tf.Session(config=config) as sess:
     with open(os.path.join(train_dir, "config.pickle"), 'wb') as f:
         pickle.dump(model.get_config(), f, protocol=4)
 
-    best_path = []
+    best_path = None
     checkpoint_path = os.path.join(train_dir, "model.ckpt")
 
     previous_performances = list()
     epoch = 0
 
     def validate(global_step, trainer):
+
+        global best_path
 
         # Run evals on development set and print(their perplexity.)
         print("########## Validation ##############")
@@ -239,13 +241,9 @@ with tf.Session(config=config) as sess:
         for summary in summaries:
             dev_summary_writer.add_summary(summary, global_step)
 
-        if not best_path or performance > min(previous_performances):
-            if best_path:
-                best_path[0] = trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step,
-                                                      write_meta_graph=False)
-            else:
-                best_path.append(
-                    trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step, write_meta_graph=False))
+        if not best_path or performance > max(previous_performances):
+            best_path = trainer.all_saver.save(sess, checkpoint_path, global_step=trainer.global_step,
+                                               write_meta_graph=False)
 
         if previous_performances and performance < previous_performances[-1]:
             print("Decaying learningrate.")
@@ -304,8 +302,8 @@ with tf.Session(config=config) as sess:
             else:
                 ckpt_result = result
 
-    best_valid_performance = min(previous_performances) if previous_performances else 0.0
+    best_valid_performance = max(previous_performances) if previous_performances else 0.0
     print("Restore model to best performance on validation: %.3f" % best_valid_performance)
-    trainer.all_saver.restore(sess, best_path[0])
-    model_name = best_path[0].split("/")[-1]
+    trainer.all_saver.restore(sess, best_path)
+    model_name = best_path.split("/")[-1]
     trainer.model.model_saver.save(sess, os.path.join(train_dir, "final_model.tf"), write_meta_graph=False)
