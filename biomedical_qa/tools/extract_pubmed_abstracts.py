@@ -29,7 +29,8 @@ def process_tarfile(tar):
             title_node = root.find("front/article-meta/title-group/article-title")
 
             if title_node is None or title_node.text is None:
-                logging.warning("No title:", member.name)
+                logging.warning("No title: %s" % member.name)
+                continue
 
             title = title_node.text
 
@@ -38,7 +39,7 @@ def process_tarfile(tar):
 
             abstract_node = root.find("**/abstract")
             if abstract_node is None:
-                logging.warning("No abstract:", member.name)
+                logging.warning("No abstract: %s" % member.name)
                 continue
             abstract_xml = ET.tostring(abstract_node).decode("utf-8")
 
