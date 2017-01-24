@@ -79,12 +79,12 @@ def main():
     print("Doing model 1 predictions...")
     factiod_performances1, list_performances1 = get_evaluation_for_model(
         FLAGS.model_config1, devices, FLAGS.model_weights1,
-        FLAGS.list_answer_count1, FLAGS.list_answer_count2)
+        FLAGS.list_answer_count1, FLAGS.list_answer_prob_threshold1)
 
     print("Doing model 2 predictions...")
     factiod_performances2, list_performances2 = get_evaluation_for_model(
         FLAGS.model_config2, devices, FLAGS.model_weights2,
-        FLAGS.list_answer_count2, FLAGS.list_answer_count2)
+        FLAGS.list_answer_count2, FLAGS.list_answer_prob_threshold2)
 
     print("Intersecting predictions...")
     best_factoid_perfomances = {}
