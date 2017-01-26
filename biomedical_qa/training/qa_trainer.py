@@ -28,6 +28,10 @@ class ExtractionGoalDefiner(GoalDefiner):
 
 
     def _init(self):
+
+        self.original_predictions = None
+        self.original_weights = None
+        
         self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int32, shape=[None], name="answer_end")
 
@@ -149,9 +153,6 @@ class ExtractionGoalDefiner(GoalDefiner):
 
 
     def initialize(self, sess, train_sampler, valid_sampler):
-
-        self.original_predictions = None
-        self.original_weights = None
 
         self.original_predictions = self.get_original_predictions(sess, train_sampler, valid_sampler) \
                                     if self.forgetting_loss_factor > 0 else None
