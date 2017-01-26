@@ -50,6 +50,7 @@ tf.app.flags.DEFINE_integer("answer_layer_depth", 1, "Number of layer in the ans
 tf.app.flags.DEFINE_integer("answer_layer_poolsize", 8, "Maxout poolsize in answer layer")
 
 #training
+tf.app.flags.DEFINE_float("forgetting_loss_factor", 0.0, "Factor for forgetting loss.")
 tf.app.flags.DEFINE_string("start_output_unit", "softmax", "softmax or sigmoid.")
 tf.app.flags.DEFINE_float("dropout", 0.0, "Dropout.")
 tf.app.flags.DEFINE_float("learning_rate", 1e-3, "Learning rate.")
@@ -176,9 +177,11 @@ with tf.Session(config=config) as sess:
     goal_definers = []
     if FLAGS.data is not None:
         if FLAGS.is_bioasq:
-            goal_definers.append(BioAsqGoalDefiner(model, devices[0]))
+            goal_definers.append(BioAsqGoalDefiner(model, devices[0],
+                                                   forgetting_los_factor=FLAGS.forgetting_loss_factor))
         else:
-            goal_definers.append(ExtractionGoalDefiner(model, devices[0]))
+            goal_definers.append(ExtractionGoalDefiner(model, devices[0],
+                                                       forgetting_loss_factor=FLAGS.forgetting_loss_factor))
 
     if FLAGS.yesno_data is not None:
         goal_definers.append(YesNoGoalDefiner(model, devices[0]))
@@ -263,6 +266,7 @@ with tf.Session(config=config) as sess:
     ckpt_result = 0.0
     i = 0
 
+    trainer.initialize(sess, train_samplers, valid_samplers)
     model.set_train(sess)
 
     epochs = 0

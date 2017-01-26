@@ -59,6 +59,15 @@ class BaseSampler:
         return qa_settings
 
 
+    def get_all_batches(self):
+
+        self.reset()
+        epoch = self.epoch
+
+        while self.epoch == epoch:
+            yield self.get_batch()
+
+
     def reset(self):
         self._idx = 0
 

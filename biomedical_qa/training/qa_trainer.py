@@ -14,17 +14,27 @@ SIGMOID_NEGATIVE_SAMPLES = -1
 
 class ExtractionGoalDefiner(GoalDefiner):
 
-    def __init__(self, model, device):
+
+    def __init__(self, model, device, forgetting_loss_factor=0.0):
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
+        self.forgetting_loss_factor = forgetting_loss_factor
         GoalDefiner.__init__(self, model, device)
+
 
     @property
     def name(self):
         return "ExtractionGoalDefiner"
 
+
     def _init(self):
         self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int32, shape=[None], name="answer_end")
+
+        self.original_start_probs = tf.placeholder(tf.float32, shape=[None, None], name="original_start_probs")
+        self.original_end_probs = tf.placeholder(tf.float32, shape=[None, None], name="original_end_probs")
+
+        original_start_probs = self.original_start_probs[:,:tf.shape(self.model.start_probs)[1]]
+        original_end_probs = self.original_end_probs[:,:tf.shape(self.model.end_probs)[1]]
 
         # Maps each answer alternative index to a question index
         self.question_partition = tf.placeholder(tf.int32, shape=[None], name="question_partition")
@@ -40,13 +50,34 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         if model.start_output_unit == "softmax":
             start_loss = self.softmax_start_loss(model)
+            start_forgetting_loss = self.softmax_cross_entropy(
+                self.model.start_probs, original_start_probs) \
+                if self.forgetting_loss_factor > 0.0 else 0.0
         elif model.start_output_unit == "sigmoid":
             start_loss = self.sigmoid_start_loss(model)
+            start_forgetting_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+                self.model.start_scores, original_start_probs) \
+                if self.forgetting_loss_factor > 0.0 else 0.0
         else:
             raise ValueError("Unknown start output unit: %s" % model._start_output_unit)
 
         end_loss = self.end_loss(model)
-        self._loss = self.reduce_per_answer_loss(start_loss + end_loss)
+        end_forgetting_loss = self.softmax_cross_entropy(self.model.end_probs, original_end_probs) \
+                                if self.forgetting_loss_factor > 0.0 else 0.0
+
+        loss = self.reduce_per_answer_loss(start_loss + end_loss)
+
+        if self.forgetting_loss_factor > 0.0:
+            # Transform both losses to [Q] shape
+            # Start loss is per context.
+            start_forgetting_loss = tf.reduce_mean(
+                    tf.segment_mean(start_forgetting_loss, self.model.context_partition))
+            # End loss is per answer option. Note this punishes contexts more that appear multiple times
+            end_forgetting_loss = tf.reduce_mean(
+                    tf.segment_mean(end_forgetting_loss, self.question_partition))
+        forgetting_loss = self.forgetting_loss_factor * (start_forgetting_loss + end_forgetting_loss)
+
+        self._loss = loss + forgetting_loss
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -85,8 +116,8 @@ class ExtractionGoalDefiner(GoalDefiner):
         with tf.name_scope("summaries"):
             self._train_summaries += [
                 tf.scalar_summary("loss", self._loss),
-                tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss)),
-                tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss)),
+                tf.scalar_summary("start_loss", tf.reduce_mean(self.reduce_per_answer_loss(start_loss))),
+                tf.scalar_summary("end_loss", tf.reduce_mean(self.reduce_per_answer_loss(end_loss))),
 
                 tf.scalar_summary("train_f1_mean", self.mean_f1),
                 tf.histogram_summary("train_f1", self.f1),
@@ -94,7 +125,51 @@ class ExtractionGoalDefiner(GoalDefiner):
                                   tf.reduce_sum(tf.cast(starts_equal, tf.int32))),
                 tf.scalar_summary("correct_ends",
                                   tf.reduce_sum(tf.cast(ends_equal, tf.int32))),
+                tf.scalar_summary("start_forgetting_loss", tf.reduce_mean(start_forgetting_loss)),
+                tf.scalar_summary("end_forgetting_loss", tf.reduce_mean(end_forgetting_loss)),
+                tf.scalar_summary("forgetting_loss", tf.reduce_mean(forgetting_loss)),
+                tf.scalar_summary("plain_loss", tf.reduce_mean(loss)),
             ]
+
+
+    def initialize(self, sess, train_sampler, valid_sampler):
+
+        self.original_predictions = None
+        if self.forgetting_loss_factor == 0.0:
+            return
+
+        print("Getting original predictions...")
+
+        original_predictions = {}
+
+        self.model.set_eval(sess)
+        batches = list(train_sampler.get_all_batches()) +\
+                    list(valid_sampler.get_all_batches())
+        for batch in batches:
+            start_probs, end_probs = sess.run(
+                [self.model.start_probs, self.model.end_probs],
+                self.get_feed_dict(batch)
+            )
+            context_index = 0
+            answer_index = 0
+            for question in batch:
+                n_contexts = len(question.contexts)
+                n_answers = sum([len(a) for a in question.answers_spans])
+                question_start_probs = start_probs[context_index:(context_index + n_contexts), :]
+                question_end_probs = end_probs[answer_index:(answer_index + n_answers), :]
+                context_index += n_contexts
+                answer_index += n_answers
+
+                assert len(question_start_probs) == n_contexts
+                assert len(question_end_probs) == n_answers
+
+                original_predictions[question.id] = (
+                    question_start_probs,
+                    question_end_probs,
+                )
+
+        self.original_predictions = original_predictions
+
 
     def reduce_per_answer_loss(self, loss):
 
@@ -103,6 +178,15 @@ class ExtractionGoalDefiner(GoalDefiner):
         # Get all of the answers right
         loss = tf.segment_mean(loss, self.answer_question_partition)
         return tf.reduce_mean(loss)
+
+    def softmax_cross_entropy(self, probs, targets):
+        # Prevent NaN losses
+        probs = tf.clip_by_value(probs, 1e-10, 1.0)
+
+        log_probs = tf.log(probs)
+        losses = - tf.mul(targets, log_probs)
+
+        return tf.reduce_mean(losses, axis=1)
 
     def softmax_start_loss(self, model):
 
@@ -200,11 +284,22 @@ class ExtractionGoalDefiner(GoalDefiner):
         question_partition = []
         answer_partition = []
 
+        original_start_probs = []
+        original_end_probs = []
+
         question_index = 0
         answer_index = 0
         filtered_qa_settings = list()
         start_context_index = 0
         for qa_setting in qa_settings:
+
+            if self.original_predictions is not None:
+                start_probs, end_probs = self.original_predictions[qa_setting.id]
+                assert len(start_probs) == len(qa_setting.contexts)
+                assert len(end_probs) == sum([len(a) for a in qa_setting.answers_spans])
+                original_start_probs.append(start_probs)
+                original_end_probs.append(end_probs)
+
             for answer_spans in qa_setting.answers_spans:
                 for span in answer_spans:
                     (context_index, start, end) = span
@@ -229,6 +324,10 @@ class ExtractionGoalDefiner(GoalDefiner):
         feed_dict[self.answer_ends] = answer_ends
         feed_dict[self.question_partition] = question_partition
         feed_dict[self.answer_partition] = answer_partition
+
+        if len(original_start_probs):
+            feed_dict[self.original_start_probs] = self.merge_array_slices(original_start_probs)
+            feed_dict[self.original_end_probs] = self.merge_array_slices(original_end_probs)
         # start weights are given when computing end-weights
         #if not is_eval:
         #    feed_dict[self.model.predicted_start_pointer] = answer_starts
@@ -236,15 +335,25 @@ class ExtractionGoalDefiner(GoalDefiner):
         return feed_dict
 
 
+    def merge_array_slices(self, slices):
+        # Merges a list of 2D arrays of varying size into a single matrix
+
+        width = max([s.shape[1] for s in slices])
+        padded_slices = [np.pad(s, [(0, 0), (0, width - s.shape[1])], "constant")
+                         for s in slices]
+        return np.concatenate(padded_slices)
+
+
 class BioAsqGoalDefiner(ExtractionGoalDefiner):
     """Overwrite eval() Method to optimize BioASQ measures."""
 
 
     def __init__(self, model, device,
-                 beam_size=10):
+                 beam_size=10, forgetting_los_factor=0.0):
 
         self._beam_size = beam_size
-        ExtractionGoalDefiner.__init__(self, model, device)
+        ExtractionGoalDefiner.__init__(self, model, device,
+                                       forgetting_loss_factor=forgetting_los_factor)
 
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
