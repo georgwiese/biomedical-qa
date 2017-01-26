@@ -5,7 +5,6 @@ import numpy as np
 from biomedical_qa import tfutil
 from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 from biomedical_qa.inference.inference import Inferrer
-from biomedical_qa.models.crf import crf_log_likelihood
 from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import GoalDefiner
 
@@ -15,9 +14,11 @@ SIGMOID_NEGATIVE_SAMPLES = -1
 class ExtractionGoalDefiner(GoalDefiner):
 
 
-    def __init__(self, model, device, forgetting_loss_factor=0.0):
+    def __init__(self, model, device, forgetting_loss_factor=0.0,
+                 original_weights_loss_factor=0.0):
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
         self.forgetting_loss_factor = forgetting_loss_factor
+        self.original_weights_loss_factor = original_weights_loss_factor
         GoalDefiner.__init__(self, model, device)
 
 
@@ -35,6 +36,11 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         original_start_probs = self.original_start_probs[:,:tf.shape(self.model.start_probs)[1]]
         original_end_probs = self.original_end_probs[:,:tf.shape(self.model.end_probs)[1]]
+
+        self.original_weights_tensors = {v.name: tf.placeholder(v.dtype,
+                                                                shape=v.get_shape(),
+                                                                name=("original_weights__" + v.name.replace(":", "_")))
+                                         for v in self.model.train_variables}
 
         # Maps each answer alternative index to a question index
         self.question_partition = tf.placeholder(tf.int32, shape=[None], name="question_partition")
@@ -77,7 +83,16 @@ class ExtractionGoalDefiner(GoalDefiner):
                     tf.segment_mean(end_forgetting_loss, self.question_partition))
         forgetting_loss = self.forgetting_loss_factor * (start_forgetting_loss + end_forgetting_loss)
 
-        self._loss = loss + forgetting_loss
+        original_weights_loss = 0.0
+        if self.original_weights_loss_factor:
+            for variable in self.model.train_variables:
+                original_weights = self.original_weights_tensors[variable.name]
+                weight_diff = original_weights - variable
+                original_weights_loss += tf.reduce_sum(tf.square(weight_diff))
+
+            original_weights_loss *= self.original_weights_loss_factor
+
+        self._loss = loss + forgetting_loss + original_weights_loss
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -116,8 +131,8 @@ class ExtractionGoalDefiner(GoalDefiner):
         with tf.name_scope("summaries"):
             self._train_summaries += [
                 tf.scalar_summary("loss", self._loss),
-                tf.scalar_summary("start_loss", tf.reduce_mean(self.reduce_per_answer_loss(start_loss))),
-                tf.scalar_summary("end_loss", tf.reduce_mean(self.reduce_per_answer_loss(end_loss))),
+                tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss)),
+                tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss)),
 
                 tf.scalar_summary("train_f1_mean", self.mean_f1),
                 tf.histogram_summary("train_f1", self.f1),
@@ -125,18 +140,26 @@ class ExtractionGoalDefiner(GoalDefiner):
                                   tf.reduce_sum(tf.cast(starts_equal, tf.int32))),
                 tf.scalar_summary("correct_ends",
                                   tf.reduce_sum(tf.cast(ends_equal, tf.int32))),
-                tf.scalar_summary("start_forgetting_loss", tf.reduce_mean(start_forgetting_loss)),
-                tf.scalar_summary("end_forgetting_loss", tf.reduce_mean(end_forgetting_loss)),
-                tf.scalar_summary("forgetting_loss", tf.reduce_mean(forgetting_loss)),
-                tf.scalar_summary("plain_loss", tf.reduce_mean(loss)),
+                tf.scalar_summary("start_forgetting_loss", start_forgetting_loss),
+                tf.scalar_summary("end_forgetting_loss", end_forgetting_loss),
+                tf.scalar_summary("forgetting_loss", forgetting_loss),
+                tf.scalar_summary("plain_loss", loss),
+                tf.scalar_summary("original_weight_loss", original_weights_loss),
             ]
 
 
     def initialize(self, sess, train_sampler, valid_sampler):
 
         self.original_predictions = None
-        if self.forgetting_loss_factor == 0.0:
-            return
+        self.original_weights = None
+
+        self.original_predictions = self.get_original_predictions(sess, train_sampler, valid_sampler) \
+                                    if self.forgetting_loss_factor > 0 else None
+        self.original_weights = self.get_original_weights(sess) \
+                                    if self.original_weights_loss_factor > 0 else None
+
+
+    def get_original_predictions(self, sess, train_sampler, valid_sampler):
 
         print("Getting original predictions...")
 
@@ -168,7 +191,14 @@ class ExtractionGoalDefiner(GoalDefiner):
                     question_end_probs,
                 )
 
-        self.original_predictions = original_predictions
+        return original_predictions
+
+
+    def get_original_weights(self, sess):
+
+        print("Getting original weights...")
+        weights = sess.run(self.model.train_variables)
+        return {v.name: w for v, w in zip(self.model.train_variables, weights)}
 
 
     def reduce_per_answer_loss(self, loss):
@@ -328,9 +358,10 @@ class ExtractionGoalDefiner(GoalDefiner):
         if len(original_start_probs):
             feed_dict[self.original_start_probs] = self.merge_array_slices(original_start_probs)
             feed_dict[self.original_end_probs] = self.merge_array_slices(original_end_probs)
-        # start weights are given when computing end-weights
-        #if not is_eval:
-        #    feed_dict[self.model.predicted_start_pointer] = answer_starts
+
+        if self.original_weights is not None:
+            for variable_name, tensor in self.original_weights_tensors.items():
+                feed_dict[tensor] = self.original_weights[variable_name]
 
         return feed_dict
 
@@ -349,11 +380,13 @@ class BioAsqGoalDefiner(ExtractionGoalDefiner):
 
 
     def __init__(self, model, device,
-                 beam_size=10, forgetting_loss_factor=0.0):
+                 beam_size=10, forgetting_loss_factor=0.0,
+                 original_weights_loss_factor=0.0):
 
         self._beam_size = beam_size
         ExtractionGoalDefiner.__init__(self, model, device,
-                                       forgetting_loss_factor=forgetting_loss_factor)
+                                       forgetting_loss_factor=forgetting_loss_factor,
+                                       original_weights_loss_factor=original_weights_loss_factor)
 
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):
