@@ -68,7 +68,7 @@ class ExtractionGoalDefiner(GoalDefiner):
         loss = self.reduce_per_answer_loss(start_loss + end_loss)
 
         if self.forgetting_loss_factor > 0.0:
-            # Transform both losses to [Q] shape
+            # Transform both losses to [Q] shape, then take mean
             # Start loss is per context.
             start_forgetting_loss = tf.reduce_mean(
                     tf.segment_mean(start_forgetting_loss, self.model.context_partition))
@@ -349,11 +349,11 @@ class BioAsqGoalDefiner(ExtractionGoalDefiner):
 
 
     def __init__(self, model, device,
-                 beam_size=10, forgetting_los_factor=0.0):
+                 beam_size=10, forgetting_loss_factor=0.0):
 
         self._beam_size = beam_size
         ExtractionGoalDefiner.__init__(self, model, device,
-                                       forgetting_loss_factor=forgetting_los_factor)
+                                       forgetting_loss_factor=forgetting_loss_factor)
 
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):

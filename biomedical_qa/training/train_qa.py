@@ -178,7 +178,7 @@ with tf.Session(config=config) as sess:
     if FLAGS.data is not None:
         if FLAGS.is_bioasq:
             goal_definers.append(BioAsqGoalDefiner(model, devices[0],
-                                                   forgetting_los_factor=FLAGS.forgetting_loss_factor))
+                                                   forgetting_loss_factor=FLAGS.forgetting_loss_factor))
         else:
             goal_definers.append(ExtractionGoalDefiner(model, devices[0],
                                                        forgetting_loss_factor=FLAGS.forgetting_loss_factor))
