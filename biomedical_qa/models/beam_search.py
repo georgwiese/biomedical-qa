@@ -110,10 +110,13 @@ class BeamSearchDecoder(object):
     """From a QASetting batch, computes most likely (start, end) pairs via beam search."""
 
 
-    def __init__(self, sess, model, beam_size):
+    def __init__(self, sess, model_or_models, beam_size):
 
         self._sess = sess
-        self._model_ensemble = ModelEnsemble(sess, [model])
+        if isinstance(model_or_models, list):
+            self._model_ensemble = ModelEnsemble(sess, model_or_models)
+        else:
+            self._model_ensemble = ModelEnsemble(sess, [model_or_models])
         self._beam_size = beam_size
 
 

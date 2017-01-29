@@ -60,7 +60,7 @@ if __name__ == "__main__":
     # Build sampler from dataset JSON
     bioasq_json, squad_json = load_dataset(FLAGS.bioasq_file)
     sampler = SQuADSampler(None, None, FLAGS.batch_size,
-                           inferrer.model.embedder.vocab,
+                           inferrer.models[0].embedder.vocab,
                            shuffle=False, dataset_json=squad_json)
 
     contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
