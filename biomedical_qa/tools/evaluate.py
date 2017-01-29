@@ -78,21 +78,25 @@ def main():
         trainer = ExtractionGoalDefiner(inferrer.model, devices[0])
         trainer.eval(inferrer.sess, sampler, verbose=True)
 
+    list_answer_prob_threshold = FLAGS.list_answer_prob_threshold
+    list_answer_count = FLAGS.list_answer_count
+
+    if FLAGS.find_optimal_threshold:
+        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        list_answer_prob_threshold, _ = evaluator.find_optimal_threshold(
+            FLAGS.threshold_search_step, verbosity_level=2 if FLAGS.verbose else 1)
+
+    if FLAGS.find_optimal_answer_count:
+        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        list_answer_count, _ = evaluator.find_optimal_answer_count(
+            verbosity_level=2 if FLAGS.verbose else 1)
+
     if FLAGS.bioasq_evaluation:
         print("Running BioASQ Evaluation...")
         evaluator = BioAsqEvaluator(sampler, inferrer)
         evaluator.evaluate(verbosity_level=2 if FLAGS.verbose else 1,
-                           list_answer_count=FLAGS.list_answer_count,
-                           list_answer_prob_threshold=FLAGS.list_answer_prob_threshold)
-
-    if FLAGS.find_optimal_threshold:
-        evaluator = BioAsqEvaluator(list_sampler, inferrer)
-        evaluator.find_optimal_threshold(FLAGS.threshold_search_step,
-                                         verbosity_level=2 if FLAGS.verbose else 1)
-
-    if FLAGS.find_optimal_answer_count:
-        evaluator = BioAsqEvaluator(list_sampler, inferrer)
-        evaluator.find_optimal_answer_count(verbosity_level=2 if FLAGS.verbose else 1)
+                           list_answer_count=list_answer_count,
+                           list_answer_prob_threshold=list_answer_prob_threshold)
 
     if FLAGS.find_perfect_cutoff:
         evaluator = BioAsqEvaluator(list_sampler, inferrer)
