@@ -25,7 +25,7 @@ def iter_xmls(tar_file):
         members = tar.getmembers()
         for i, member in enumerate(members):
 
-            if i % 10000 == 0:
+            if i % 1000 == 0:
                 print("  [%s] Parsing file %d / %d" % (tar_file, i+1, len(members)))
 
             if not member.name.endswith(".nxml"):
