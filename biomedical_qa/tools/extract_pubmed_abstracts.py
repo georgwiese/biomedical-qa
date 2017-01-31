@@ -6,30 +6,36 @@ import nltk.data
 import xml.etree.ElementTree as ET
 import logging
 from html2text import html2text
+from multiprocessing import Pool
 
 tf.app.flags.DEFINE_string('data_dir', None, 'Path to directory containing all tar.gz files.')
 tf.app.flags.DEFINE_string('out_json', None, 'Path to the output JSON file.')
 tf.app.flags.DEFINE_string('extract', "question_titles", '(question_titles|all_questions).')
+tf.app.flags.DEFINE_integer('threads', 4, 'Number of threads.')
 
 FLAGS = tf.app.flags.FLAGS
 
 
-def iter_xmls(tar):
+def iter_xmls(tar_file):
 
-    members = tar.getmembers()
-    for i, member in enumerate(members):
+    print("Processing tarfile:", tar_file)
 
-        if i % 10000 == 0:
-            print("  Parsing file %d / %d" % (i+1, len(members)))
+    with tarfile.open(os.path.join(FLAGS.data_dir, tar_file)) as tar:
 
-        if not member.name.endswith(".nxml"):
-            continue
+        members = tar.getmembers()
+        for i, member in enumerate(members):
 
-        with tar.extractfile(member) as f:
-            root = ET.parse(f).getroot()
-            f.seek(0)
-            xml_text = str(f.read())
-            yield root, xml_text, member.name
+            if i % 10000 == 0:
+                print("  [%s] Parsing file %d / %d" % (tar_file, i+1, len(members)))
+
+            if not member.name.endswith(".nxml"):
+                continue
+
+            with tar.extractfile(member) as f:
+                root = ET.parse(f).getroot()
+                f.seek(0)
+                xml_text = str(f.read())
+                yield root, xml_text, member.name
 
 
 def process_tarfile_question_titles(tar):
@@ -61,6 +67,8 @@ def process_tarfile_question_titles(tar):
             "abstract_xml": abstract_xml,
         })
 
+    print("Done processing tarfile %s. %d Questions added." % (tar, len(data)))
+
     return data
 
 
@@ -81,12 +89,14 @@ def process_tarfile_all_questions(tar):
                 "question": question,
             })
 
+    print("Done processing tarfile %s. %d Questions added." % (tar, len(data)))
+
     return data
 
 
 def main():
 
-    data = []
+    pool = Pool(FLAGS.threads)
 
     process_tarfile = None
     if FLAGS.extract == "question_titles":
@@ -95,12 +105,8 @@ def main():
         process_tarfile = process_tarfile_all_questions
 
     files = [f for f in os.listdir(FLAGS.data_dir) if f.endswith(".tar.gz")]
-    for file in files:
-        with tarfile.open(os.path.join(FLAGS.data_dir, file)) as f:
-            print("Processing tarfile:", file)
-            new_data = process_tarfile(f)
-            data += new_data
-            print("Done processing tarfile %s. %d Questions added." % (file, len(new_data)))
+    data = pool.map(process_tarfile, files)
+    data = [d for group in data for d in group]
 
     with open(FLAGS.out_json, "w") as f:
         json.dump({"data": data}, f, indent=2)
