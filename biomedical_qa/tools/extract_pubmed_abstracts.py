@@ -15,34 +15,43 @@ tf.app.flags.DEFINE_integer('threads', 4, 'Number of threads.')
 
 FLAGS = tf.app.flags.FLAGS
 
-
 def iter_xmls(tar_file):
+
+    import time
 
     print("Processing tarfile:", tar_file)
 
     with tarfile.open(os.path.join(FLAGS.data_dir, tar_file)) as tar:
 
         members = tar.getmembers()
+        start_time = time.time()
         for i, member in enumerate(members):
 
             if i % 1000 == 0:
-                print("  [%s] Parsing file %d / %d" % (tar_file, i+1, len(members)))
+                end_time = time.time()
+                total_time = end_time - start_time
+                start_time = end_time
+                print("  [%s] Parsing file %d / %d. (%fs / 1000 files)" % (
+                    tar_file, i+1, len(members), total_time))
 
             if not member.name.endswith(".nxml"):
                 continue
 
-            with tar.extractfile(member) as f:
-                root = ET.parse(f).getroot()
-                f.seek(0)
-                xml_text = str(f.read())
-                yield root, xml_text, member.name
+            try:
+                with tar.extractfile(member) as f:
+                    xml_text = f.read()
+                    yield xml_text, member.name
+            except:
+                logging.error("Error Parsing member: %s" % member.name)
 
 
 def process_tarfile_question_titles(tar):
 
     data = []
 
-    for root, _, filename in iter_xmls(tar):
+    for xml_text, filename in iter_xmls(tar):
+
+        root = ET.fromstring(xml_text)
 
         title_node = root.find("front/article-meta/title-group/article-title")
 
@@ -77,9 +86,9 @@ def process_tarfile_all_questions(tar):
     data = []
     tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 
-    for _, xml_text, filename in iter_xmls(tar):
+    for xml_text, filename in iter_xmls(tar):
 
-        text = html2text(xml_text)
+        text = html2text(str(xml_text))
         sentences = tokenizer.tokenize(text)
         questions = [s for s in sentences if s[-1] == "?"]
 
