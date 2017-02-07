@@ -31,7 +31,9 @@ class SQuADSampler(BaseSampler):
         for article in self.dataset:
             for paragraph in article["paragraphs"]:
 
-                context_str_all = paragraph["context"]
+                context_str_all = paragraph["context_original_capitalization"] \
+                                    if "context_original_capitalization" in paragraph \
+                                    else paragraph["context"]
                 assert "\n\n" not in context_str_all
                 context_strs = context_str_all.split("\n") \
                     if self.split_contexts_on_newline else [context_str_all]
@@ -43,7 +45,7 @@ class SQuADSampler(BaseSampler):
                 previous_contexts_length = 0
                 for context_index, context_str in enumerate(context_strs):
 
-                    context, offsets = self.get_ids_and_offsets(context_str)
+                    context, offsets = self.get_ids_and_offsets(context_str.lower())
                     # Add previous contexts length to offset -> offset in context_str_all
                     offsets = [o + previous_contexts_length for o in offsets]
                     # Add current context length + 1 (for "\n" token)
@@ -87,7 +89,9 @@ class SQuADSampler(BaseSampler):
                     q_type = qa["question_type"] if "question_type" in qa else None
                     is_yes = qa["answer_is_yes"] if "answer_is_yes" in qa else None
                     if q_type is None or q_type in self.types:
-                        question_str = qa["question"]
+                        question_str = qa["question_original_capitalization"] \
+                                        if "question_original_capitalization" in qa \
+                                        else qa["question"]
                         question_tokens = self.get_ids_and_offsets(question_str)[0]
 
                         if self.tagger:

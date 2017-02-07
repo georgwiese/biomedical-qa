@@ -6,8 +6,9 @@ MAX_ENTITY_LENGTH = 10
 class EntityTagger(object):
 
 
-    def __init__(self, terms_file, types_file):
+    def __init__(self, terms_file, types_file, case_sensitive=False):
 
+        self.case_sensitive = case_sensitive
         self.term2types, self.types_set = self._build_term2types(terms_file, types_file)
 
         self.num_types = len(self.types_set)
@@ -52,7 +53,9 @@ class EntityTagger(object):
 
         rows = []
         for line in file_lines:
-            cells = line.lower().split("|")
+            if not self.case_sensitive:
+                line = line.lower()
+            cells = line.split("|")
             rows.append([cells[i] for i in columns_list])
 
         return rows
@@ -80,7 +83,8 @@ class EntityTagger(object):
 
 
     def tag(self, text, tokenizer):
-        text = text.lower()
+        if not self.case_sensitive:
+            text = text.lower()
         token_offsets = self._get_token_offsets(text, tokenizer)
         tags = [set() for _ in token_offsets]
         tag_ids = [set() for _ in token_offsets]
@@ -110,7 +114,7 @@ class EntityTagger(object):
         offsets = []
         offset = 0
         for token in tokenizer.tokenize(text):
-            offset = text.index(token.lower(), offset)
+            offset = text.index(token, offset)
             offsets.append((offset, offset + len(token)))
             offset += len(token)
         return offsets

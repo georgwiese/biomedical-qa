@@ -169,7 +169,7 @@ with tf.Session(config=config) as sess:
 
     tagger = None
     if FLAGS.terms_file and FLAGS.types_file:
-        tagger = EntityTagger(FLAGS.terms_file, FLAGS.types_file)
+        tagger = EntityTagger(FLAGS.terms_file, FLAGS.types_file, case_sensitive=True)
 
     for dir, types in [(FLAGS.data, ["factoid", "list"]), (FLAGS.yesno_data, ["yesno"])]:
         if dir is not None:
