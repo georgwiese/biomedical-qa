@@ -6,9 +6,8 @@ MAX_ENTITY_LENGTH = 10
 class EntityTagger(object):
 
 
-    def __init__(self, terms_file, types_file, tokenizer):
+    def __init__(self, terms_file, types_file):
 
-        self.tokenizer = tokenizer
         self.term2types, self.types_set = self._build_term2types(terms_file, types_file)
 
         self.num_types = len(self.types_set)
@@ -80,10 +79,11 @@ class EntityTagger(object):
         return result
 
 
-    def tag(self, text):
+    def tag(self, text, tokenizer):
         text = text.lower()
-        token_offsets = self._get_token_offsets(text)
+        token_offsets = self._get_token_offsets(text, tokenizer)
         tags = [set() for _ in token_offsets]
+        tag_ids = [set() for _ in token_offsets]
         found_entities = set()
 
         for entity_length in range(1, MAX_ENTITY_LENGTH):
@@ -99,15 +99,18 @@ class EntityTagger(object):
                 if candidate_string in self.term2types:
                     found_entities.add(candidate_string)
                     for token_index in range(i, i + entity_length):
-                        tags[token_index].update(self.term2types[candidate_string])
+                        types = self.term2types[candidate_string]
+                        type_ids = set([self.type2id[type] for type in types])
+                        tags[token_index].update(types)
+                        tag_ids[token_index].update(type_ids)
 
-        return tags, found_entities
+        return tags, tag_ids, found_entities
 
-    def _get_token_offsets(self, text):
+    def _get_token_offsets(self, text, tokenizer):
         offsets = []
         offset = 0
-        for token in self.tokenizer.tokenize(text):
-            offset = text.index(token, offset)
+        for token in tokenizer.tokenize(text):
+            offset = text.index(token.lower(), offset)
             offsets.append((offset, offset + len(token)))
             offset += len(token)
         return offsets

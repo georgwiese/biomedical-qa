@@ -13,7 +13,8 @@ class QASimplePointerModel(ExtractionQAModel):
 
     def __init__(self, size, embedder, keep_prob=1.0, composition="LSTM", devices=None, name="QASimplePointerModel",
                  with_features=True, num_intrafusion_layers=1, with_inter_fusion=True, layer_norm=False,
-                 start_output_unit="softmax", with_yesno=False, with_question_type_features=False):
+                 start_output_unit="softmax", with_yesno=False, with_question_type_features=False,
+                 with_entity_tag_features=False):
         self._composition = composition
         self._device0 = devices[0] if devices is not None else "/cpu:0"
         self._device1 = devices[1%len(devices)] if devices is not None else "/cpu:0"
@@ -23,6 +24,7 @@ class QASimplePointerModel(ExtractionQAModel):
         self._layer_norm = layer_norm
         self._with_yesno = with_yesno
         self._with_question_type_features = with_question_type_features
+        self._with_entity_tag_features = with_entity_tag_features
         self.start_output_unit = start_output_unit
         assert start_output_unit in ["softmax", "sigmoid"]
         ExtractionQAModel.__init__(self, size, embedder, keep_prob, name)
@@ -110,6 +112,12 @@ class QASimplePointerModel(ExtractionQAModel):
                     embedded_ctxt = tf.concat(2, [embedded_ctxt,
                                                   tf.tile(question_type_features,
                                                           tf.pack([1, tf.shape(embedded_ctxt)[1], 1]))])
+
+                if self._with_entity_tag_features:
+                    embedded_question = tf.concat(2, [embedded_question,
+                                                      tf.cast(self._question_tags, tf.float32)])
+                    embedded_ctxt = tf.concat(2, [embedded_ctxt,
+                                                  tf.cast(self._context_tags, tf.float32)])
 
                 self.encoded_question = self._preprocessing_layer(rnn_constructor, embedded_question,
                                                                   self.question_length, projection_scope="question_proj")
@@ -391,6 +399,7 @@ class QASimplePointerModel(ExtractionQAModel):
         config["start_output_unit"] = self.start_output_unit
         config["with_yesno"] = self._with_yesno
         config["with_question_type_features"] = self._with_question_type_features
+        config["with_entity_tag_features"] = self._with_entity_tag_features
         return config
 
 
@@ -419,7 +428,8 @@ class QASimplePointerModel(ExtractionQAModel):
             layer_norm=config.get("layer_norm", False),
             start_output_unit=config["start_output_unit"],
             with_yesno=config.get("with_yesno", False),
-            with_question_type_features=config.get("with_question_type_features", False))
+            with_question_type_features=config.get("with_question_type_features", False),
+            with_entity_tag_features=config.get("with_entity_tag_features", False))
 
         return qa_model
 

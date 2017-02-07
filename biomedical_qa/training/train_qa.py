@@ -7,6 +7,7 @@ import time
 
 import tensorflow as tf
 
+from biomedical_qa.data.entity_tagger import EntityTagger
 from biomedical_qa.models import model_from_config
 from biomedical_qa.models.embedder import CharWordEmbedder, ConcatEmbedder
 from biomedical_qa.models.qa_pointer import QAPointerModel
@@ -16,8 +17,6 @@ from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionGoalDefiner, BioAsqGoalDefiner
 from biomedical_qa.training.trainer import Trainer
 from biomedical_qa.training.yesno_trainer import YesNoGoalDefiner
-
-from biomedical_qa.util import load_vocab
 
 # data loading specifics
 tf.app.flags.DEFINE_string('data', None, 'Directory containing dataset files.')
@@ -43,6 +42,10 @@ tf.app.flags.DEFINE_string("model_type", "qa_pointer", "[pointer, simple_pointer
 # qa_simple_pointer settings
 tf.app.flags.DEFINE_bool("with_fusion", False, "Whether Inter & Intra fusion is activated.")
 tf.app.flags.DEFINE_bool("with_question_type_features", False, "Whether Question types are passed to the network.")
+tf.app.flags.DEFINE_bool("with_entity_tag_features", False, "Whether entity tags are passed to the network.")
+
+tf.app.flags.DEFINE_string("terms_file", None, "UML Terms file (MRCONSO.RRF).")
+tf.app.flags.DEFINE_string("types_file", None, "UMLS Types file (MRSTY.RRF).")
 
 # qa_pointer settings
 tf.app.flags.DEFINE_string("answer_layer_type", "dpn", "Type of answer layer ([dpn]).")
@@ -89,7 +92,8 @@ config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
 
 
-def make_sampler(dir, filenames, vocab, types):
+def make_sampler(dir, filenames, vocab, types, tagger):
+
     args = {
         "dir": dir,
         "filenames": filenames,
@@ -97,7 +101,8 @@ def make_sampler(dir, filenames, vocab, types):
         "vocab": vocab,
         "instances_per_epoch": FLAGS.max_instances,
         "split_contexts_on_newline": FLAGS.split_contexts,
-        "types": types
+        "types": types,
+        "tagger": tagger,
     }
 
     if FLAGS.is_bioasq:
@@ -150,7 +155,8 @@ with tf.Session(config=config) as sess:
                                          num_intrafusion_layers=num_intrafusion_layers,
                                          with_inter_fusion=with_inter_fusion,
                                          start_output_unit=FLAGS.start_output_unit,
-                                         with_question_type_features=FLAGS.with_question_type_features)
+                                         with_question_type_features=FLAGS.with_question_type_features,
+                                         with_entity_tag_features=FLAGS.with_entity_tag_features)
         else:
             raise ValueError("Unknown model type: %s" % FLAGS.model_type)
 
@@ -161,17 +167,24 @@ with tf.Session(config=config) as sess:
     train_samplers = []
     valid_samplers = []
 
+    tagger = None
+    if FLAGS.terms_file and FLAGS.types_file:
+        tagger = EntityTagger(FLAGS.terms_file, FLAGS.types_file)
+
     for dir, types in [(FLAGS.data, ["factoid", "list"]), (FLAGS.yesno_data, ["yesno"])]:
         if dir is not None:
             train_fns = [fn for fn in os.listdir(dir) if fn.startswith(FLAGS.trainset_prefix)]
             train_samplers.append(make_sampler(dir, train_fns,
                                                model.transfer_model.vocab,
-                                               types))
+                                               types, tagger))
 
             valid_fns = [fn for fn in os.listdir(dir) if fn.startswith(FLAGS.validset_prefix)]
             valid_samplers.append(make_sampler(dir, valid_fns,
                                                model.transfer_model.vocab,
-                                               types))
+                                               types, tagger))
+
+    # Free memory
+    tagger = None
 
     goal_definers = []
     if FLAGS.data is not None:
