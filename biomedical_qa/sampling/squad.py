@@ -45,7 +45,7 @@ class SQuADSampler(BaseSampler):
                 previous_contexts_length = 0
                 for context_index, context_str in enumerate(context_strs):
 
-                    context, offsets = self.get_ids_and_offsets(context_str.lower())
+                    context, offsets = self.get_ids_and_offsets(context_str)
                     # Add previous contexts length to offset -> offset in context_str_all
                     offsets = [o + previous_contexts_length for o in offsets]
                     # Add current context length + 1 (for "\n" token)
