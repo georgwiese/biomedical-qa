@@ -47,6 +47,7 @@ tf.app.flags.DEFINE_bool("with_entity_tag_features", False, "Whether entity tags
 # Entity tagger settings
 tf.app.flags.DEFINE_string("entity_tagger", None, "[dictionary, olelo], or None.")
 tf.app.flags.DEFINE_string("olelo_host", "192.168.30.161:8000", "Olelo host:port.")
+tf.app.flags.DEFINE_string("entity_blacklist_file", None, "Blacklist file.")
 tf.app.flags.DEFINE_string("terms_file", None, "UML Terms file (MRCONSO.RRF).")
 tf.app.flags.DEFINE_string("types_file", None, "UMLS Types file (MRSTY.RRF).")
 
@@ -173,7 +174,9 @@ with tf.Session(config=config) as sess:
     tagger = None
     if FLAGS.entity_tagger == "dictionary":
         print("Adding Dictionary Tagger")
-        tagger = DictionaryEntityTagger(FLAGS.terms_file, FLAGS.types_file, case_sensitive=True)
+        tagger = DictionaryEntityTagger(FLAGS.terms_file, FLAGS.types_file,
+                                        case_sensitive=True,
+                                        blacklist_file=FLAGS.entity_blacklist_file)
     elif FLAGS.entity_tagger == "olelo":
         print("Adding Olelo Tagger")
         tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_host)

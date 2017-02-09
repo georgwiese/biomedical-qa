@@ -101,10 +101,13 @@ class EntityTagger(object):
 class DictionaryEntityTagger(EntityTagger):
 
 
-    def __init__(self, terms_file, types_file, case_sensitive=False):
+    def __init__(self, terms_file, types_file, case_sensitive=False, blacklist_file=None):
 
         self.case_sensitive = case_sensitive
         self.term2types, self.types_set = self._build_term2types(terms_file, types_file)
+        self.blacklist = self._read_blacklist_file(blacklist_file) \
+                            if blacklist_file is not None else set()
+
         self.initialize_properties(self.types_set)
 
 
@@ -140,6 +143,16 @@ class DictionaryEntityTagger(EntityTagger):
         return term2types, types_set
 
 
+    def _read_blacklist_file(self, blacklist_file):
+
+        print("Reading blacklist file...")
+
+        with open(blacklist_file) as f:
+            lines = f.readlines()
+
+        return set([l.strip() for l in lines])
+
+
     def tag(self, text, tokenizer):
         if not self.case_sensitive:
             text = text.lower()
@@ -157,6 +170,9 @@ class DictionaryEntityTagger(EntityTagger):
                 start_offset, _ = token_offsets[i]
                 _, end_offset = token_offsets[i + entity_length - 1]
                 candidate_string = text[start_offset:end_offset]
+
+                if candidate_string.lower() in self.blacklist:
+                    continue
 
                 if candidate_string in self.term2types:
                     found_entities.add(candidate_string)
