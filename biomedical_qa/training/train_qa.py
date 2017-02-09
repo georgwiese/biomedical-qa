@@ -7,7 +7,7 @@ import time
 
 import tensorflow as tf
 
-from biomedical_qa.data.entity_tagger import EntityTagger
+from biomedical_qa.data.entity_tagger import DictionaryEntityTagger, OleloEntityTagger
 from biomedical_qa.models import model_from_config
 from biomedical_qa.models.embedder import CharWordEmbedder, ConcatEmbedder
 from biomedical_qa.models.qa_pointer import QAPointerModel
@@ -44,6 +44,9 @@ tf.app.flags.DEFINE_bool("with_fusion", False, "Whether Inter & Intra fusion is 
 tf.app.flags.DEFINE_bool("with_question_type_features", False, "Whether Question types are passed to the network.")
 tf.app.flags.DEFINE_bool("with_entity_tag_features", False, "Whether entity tags are passed to the network.")
 
+# Entity tagger settings
+tf.app.flags.DEFINE_string("entity_tagger", None, "[dictionary, olelo], or None.")
+tf.app.flags.DEFINE_string("olelo_host", "192.168.30.161:8000", "Olelo host:port.")
 tf.app.flags.DEFINE_string("terms_file", None, "UML Terms file (MRCONSO.RRF).")
 tf.app.flags.DEFINE_string("types_file", None, "UMLS Types file (MRSTY.RRF).")
 
@@ -168,8 +171,14 @@ with tf.Session(config=config) as sess:
     valid_samplers = []
 
     tagger = None
-    if FLAGS.terms_file and FLAGS.types_file:
-        tagger = EntityTagger(FLAGS.terms_file, FLAGS.types_file, case_sensitive=True)
+    if FLAGS.entity_tagger == "dictionary":
+        print("Adding Dictionary Tagger")
+        tagger = DictionaryEntityTagger(FLAGS.terms_file, FLAGS.types_file, case_sensitive=True)
+    elif FLAGS.entity_tagger == "olelo":
+        print("Adding Olelo Tagger")
+        tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_host)
+    elif FLAGS.entity_tagger is not None:
+        raise ValueError("Unrecognized entity tagger: %s" % FLAGS.entity_tagger)
 
     for dir, types in [(FLAGS.data, ["factoid", "list"]), (FLAGS.yesno_data, ["yesno"])]:
         if dir is not None:
