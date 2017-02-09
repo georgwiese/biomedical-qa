@@ -2,6 +2,8 @@ import os
 import tensorflow as tf
 import numpy as np
 
+from biomedical_qa.data.entity_tagger import DictionaryEntityTagger, \
+    OleloEntityTagger
 from biomedical_qa.inference.inference import Inferrer, get_model, get_session
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
@@ -32,6 +34,13 @@ tf.app.flags.DEFINE_boolean("find_optimal_answer_count", False, "If true, will f
 tf.app.flags.DEFINE_boolean("find_perfect_cutoff", False, "If true, cut off each list such that F1 is maximized.")
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
 
+# Entity tagger settings
+tf.app.flags.DEFINE_string("entity_tagger", None, "[dictionary, olelo], or None.")
+tf.app.flags.DEFINE_string("olelo_host", "192.168.30.161:8000", "Olelo host:port.")
+tf.app.flags.DEFINE_string("entity_blacklist_file", None, "Blacklist file.")
+tf.app.flags.DEFINE_string("terms_file", None, "UML Terms file (MRCONSO.RRF).")
+tf.app.flags.DEFINE_string("types_file", None, "UMLS Types file (MRSTY.RRF).")
+
 tf.app.flags.DEFINE_float("threshold_search_step", 0.01, "Step size to use for threshold search.")
 
 FLAGS = tf.app.flags.FLAGS
@@ -50,19 +59,33 @@ def main():
     data_filename = os.path.basename(FLAGS.eval_data)
     instances = FLAGS.subsample if FLAGS.subsample > 0 else None
 
+    tagger = None
+    if FLAGS.entity_tagger == "dictionary":
+        print("Adding Dictionary Tagger")
+        tagger = DictionaryEntityTagger(FLAGS.terms_file, FLAGS.types_file,
+                                        case_sensitive=True,
+                                        blacklist_file=FLAGS.entity_blacklist_file)
+    elif FLAGS.entity_tagger == "olelo":
+        print("Adding Olelo Tagger")
+        tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_host)
+    elif FLAGS.entity_tagger is not None:
+        raise ValueError("Unrecognized entity tagger: %s" % FLAGS.entity_tagger)
+
     list_sampler = None
     if not FLAGS.is_bioasq:
         sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
                                inferrer.model.embedder.vocab,
                                instances_per_epoch=instances, shuffle=False,
-                               split_contexts_on_newline=FLAGS.split_contexts)
+                               split_contexts_on_newline=FLAGS.split_contexts,
+                               tagger=tagger)
     else:
         sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
                                 inferrer.model.embedder.vocab,
                                 instances_per_epoch=instances, shuffle=False,
                                 split_contexts_on_newline=FLAGS.split_contexts,
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
-                                include_synonyms=FLAGS.bioasq_include_synonyms)
+                                include_synonyms=FLAGS.bioasq_include_synonyms,
+                                tagger=tagger)
 
 
         list_sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
@@ -71,7 +94,8 @@ def main():
                                      instances_per_epoch=instances, shuffle=False,
                                      split_contexts_on_newline=FLAGS.split_contexts,
                                      context_token_limit=FLAGS.bioasq_context_token_limit,
-                                     include_synonyms=FLAGS.bioasq_include_synonyms)
+                                     include_synonyms=FLAGS.bioasq_include_synonyms,
+                                     tagger=tagger)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
