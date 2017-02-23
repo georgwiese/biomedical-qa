@@ -85,7 +85,7 @@ class EntityTagger(object):
             - tag_ids is a list<set<type_id>> with one entry per token
             - found_entities is a set<string> of all the entities found
         """
-        pass
+        raise NotImplementedError()
 
 
     def _get_token_offsets(self, text, tokenizer):
@@ -185,12 +185,12 @@ class DictionaryEntityTagger(EntityTagger):
         return tags, tag_ids, found_entities
 
 
-class OleloEntityTagger(EntityTagger):
+class ApiEntityTagger(EntityTagger):
 
 
-    def __init__(self, types_file, olelo_host):
+    def __init__(self, types_file, url):
 
-        self.olelo_host = olelo_host
+        self.url = url
         self.cui2types, self.types_set = self._read_types_files(types_file)
         self.initialize_properties(self.types_set)
 
@@ -212,28 +212,20 @@ class OleloEntityTagger(EntityTagger):
 
 
     def tag(self, text, tokenizer):
-
-        olelo_response = self._query_olelo(text)
         offsets = self._get_token_offsets(text, tokenizer)
 
         tags = [set() for _ in offsets]
         tag_ids = [set() for _ in offsets]
         found_entities = set()
 
-        for entity in olelo_response["entities"]:
+        for token_range, entity_string in self._query_api(text, offsets):
 
-            token_range = self._find_token_range(offsets, entity["offset"], len(entity["text"]))
-
-            if token_range is None:
-                # Tokens not found in text
-                continue
-
-            if entity["normalizedForm"] not in self.cui2types:
+            if entity_string not in self.cui2types:
                 # Unknown entity type
                 continue
 
             start_index, end_index = token_range
-            types = self.cui2types[entity["normalizedForm"]]
+            types = self.cui2types[entity_string]
             type_ids = set([self.type2id[type] for type in types])
 
             for token_index in range(start_index, end_index + 1):
@@ -245,15 +237,6 @@ class OleloEntityTagger(EntityTagger):
             found_entities.add(text[char_start:char_end])
 
         return tags, tag_ids, found_entities
-
-
-    def _query_olelo(self, text):
-
-        url = "http://" + self.olelo_host + "/text_analysis/analyze.xsjs"
-        params = {"question": text}
-        response = requests.get(url, params)
-
-        return json.loads(response.text)["umls"]
 
 
     def _find_token_range(self, offsets, entity_start, entity_length):
@@ -272,3 +255,43 @@ class OleloEntityTagger(EntityTagger):
                         return (start_index, end_index)
 
         return None
+
+
+    @abc.abstractmethod
+    def _query_api(self, text, token_offsets):
+        """Yields (token_range, entity_string) tuples."""
+
+        raise NotImplementedError()
+
+
+class OleloEntityTagger(ApiEntityTagger):
+
+
+    def __init__(self, types_file, olelo_url):
+
+        ApiEntityTagger.__init__(self, types_file, olelo_url)
+
+
+    def _query_api(self, text, token_offsets):
+
+        olelo_response = self._query_olelo(text)
+
+        for entity in olelo_response["entities"]:
+
+            token_range = self._find_token_range(token_offsets,
+                                                 entity["offset"],
+                                                 len(entity["text"]))
+
+            if token_range is None:
+                # Tokens not found in text
+                continue
+
+            yield token_range, entity["normalizedForm"]
+
+
+    def _query_olelo(self, text):
+
+        params = {"question": text}
+        response = requests.get(self.url, params)
+
+        return json.loads(response.text)["umls"]

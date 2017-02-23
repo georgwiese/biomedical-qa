@@ -46,7 +46,7 @@ tf.app.flags.DEFINE_bool("with_entity_tag_features", False, "Whether entity tags
 
 # Entity tagger settings
 tf.app.flags.DEFINE_string("entity_tagger", None, "[dictionary, olelo], or None.")
-tf.app.flags.DEFINE_string("olelo_host", "192.168.30.161:8000", "Olelo host:port.")
+tf.app.flags.DEFINE_string("olelo_url", "https://ares.epic.hpi.uni-potsdam.de/CJosfa64Kz46H7M6/rest/api1/analyze", "Olelo URL.")
 tf.app.flags.DEFINE_string("entity_blacklist_file", None, "Blacklist file.")
 tf.app.flags.DEFINE_string("terms_file", None, "UML Terms file (MRCONSO.RRF).")
 tf.app.flags.DEFINE_string("types_file", None, "UMLS Types file (MRSTY.RRF).")
@@ -179,7 +179,7 @@ with tf.Session(config=config) as sess:
                                         blacklist_file=FLAGS.entity_blacklist_file)
     elif FLAGS.entity_tagger == "olelo":
         print("Adding Olelo Tagger")
-        tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_host)
+        tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_url)
     elif FLAGS.entity_tagger is not None:
         raise ValueError("Unrecognized entity tagger: %s" % FLAGS.entity_tagger)
 
