@@ -110,6 +110,9 @@ class SQuADSampler(BaseSampler):
                                              contexts_tags=contexts_tags,
                                              question_tags=question_tags))
 
+                        if self.tagger and len(qas) % 10 == 0:
+                            print("%d questions..." % len(qas))
+
                     char_offsets[qa["id"]] = {(context_index, token_index) : char_offset
                                               for char_offset, (context_index, token_index)
                                               in char_offset_to_token_index.items()}

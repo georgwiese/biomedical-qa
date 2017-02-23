@@ -239,9 +239,7 @@ class ApiEntityTagger(EntityTagger):
         return tags, tag_ids, found_entities
 
 
-    def _find_token_range(self, offsets, entity_start, entity_length):
-
-        entity_end = entity_start + entity_length
+    def _find_token_range(self, offsets, entity_start, entity_end):
 
         for start_index in range(len(offsets)):
 
@@ -280,7 +278,7 @@ class OleloEntityTagger(ApiEntityTagger):
 
             token_range = self._find_token_range(token_offsets,
                                                  entity["offset"],
-                                                 len(entity["text"]))
+                                                 entity["offset"] + len(entity["text"]))
 
             if token_range is None:
                 # Tokens not found in text
@@ -295,3 +293,48 @@ class OleloEntityTagger(ApiEntityTagger):
         response = requests.get(self.url, params)
 
         return json.loads(response.text)["umls"]
+
+
+class CtakesEntityTagger(ApiEntityTagger):
+
+
+    def __init__(self, types_file, ctakes_url):
+
+        ApiEntityTagger.__init__(self, types_file, ctakes_url)
+
+
+    def _query_api(self, text, token_offsets):
+
+        ctakes_response = self._query_ctakes(text)
+
+        for entry in ctakes_response:
+
+            if not "annotation" in entry:
+                continue
+
+            annotation = entry["annotation"]
+
+            concepts = annotation.get("ontologyConceptArr", None)
+
+            if concepts is None:
+                continue
+
+            token_range = self._find_token_range(token_offsets,
+                                                 annotation["begin"],
+                                                 annotation["end"])
+
+            for concept in concepts:
+
+                entity_string = concept["annotation"]["cui"]
+
+                yield token_range, entity_string
+
+
+    def _query_ctakes(self, text):
+
+        params = {"text": text}
+        response = requests.get(self.url, params)
+
+        return json.loads(response.text)
+
+
