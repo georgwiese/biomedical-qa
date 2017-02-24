@@ -262,6 +262,22 @@ class ApiEntityTagger(EntityTagger):
         raise NotImplementedError()
 
 
+    def _request_json_with_retry(self, params):
+
+        response = requests.get(self.url, params)
+
+        for _ in range(3):
+            if response.status_code == 200:
+                break
+            print("Got status code %d: %s" % (response.status_code, response.text))
+            print("Retrying...")
+            response = requests.get(self.url, params)
+
+        response.raise_for_status()
+
+        return json.loads(response.text)
+
+
 class OleloEntityTagger(ApiEntityTagger):
 
 
@@ -290,9 +306,7 @@ class OleloEntityTagger(ApiEntityTagger):
     def _query_olelo(self, text):
 
         params = {"question": text}
-        response = requests.get(self.url, params)
-
-        return json.loads(response.text)["umls"]
+        return self._request_json_with_retry(params)["umls"]
 
 
 class CtakesEntityTagger(ApiEntityTagger):
@@ -333,8 +347,6 @@ class CtakesEntityTagger(ApiEntityTagger):
     def _query_ctakes(self, text):
 
         params = {"text": text}
-        response = requests.get(self.url, params)
-
-        return json.loads(response.text)
+        return self._request_json_with_retry(params)
 
 
