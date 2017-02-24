@@ -193,6 +193,7 @@ class ApiEntityTagger(EntityTagger):
         self.url = url
         self.cui2types, self.types_set = self._read_types_files(types_file)
         self.initialize_properties(self.types_set)
+        self.session = None
 
 
     def _read_types_files(self, types_file):
@@ -264,14 +265,17 @@ class ApiEntityTagger(EntityTagger):
 
     def _request_json_with_retry(self, params):
 
-        response = requests.get(self.url, params)
+        if self.session is None:
+            self.session = requests.Session()
+
+        response = self.session.get(self.url, params=params)
 
         if response.status_code != 200:
             print("Params:", str(params))
             for _ in range(3):
                 print("Got status code %d: %s" % (response.status_code, response.text))
                 print("Retrying...")
-                response = requests.get(self.url, params)
+                response = self.session.get(self.url, params=params)
                 if response.status_code == 200:
                     print("Recovered!")
                     break
