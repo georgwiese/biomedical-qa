@@ -344,6 +344,9 @@ class CtakesEntityTagger(ApiEntityTagger):
                                                  annotation["begin"],
                                                  annotation["end"])
 
+            if token_range is None:
+                continue
+
             for concept in concepts:
 
                 entity_string = concept["annotation"]["cui"]
