@@ -266,12 +266,15 @@ class ApiEntityTagger(EntityTagger):
 
         response = requests.get(self.url, params)
 
-        for _ in range(3):
-            if response.status_code == 200:
-                break
-            print("Got status code %d: %s" % (response.status_code, response.text))
-            print("Retrying...")
-            response = requests.get(self.url, params)
+        if response.status_code != 200:
+            print("Params:", str(params))
+            for _ in range(3):
+                print("Got status code %d: %s" % (response.status_code, response.text))
+                print("Retrying...")
+                response = requests.get(self.url, params)
+                if response.status_code == 200:
+                    print("Recovered!")
+                    break
 
         response.raise_for_status()
 
