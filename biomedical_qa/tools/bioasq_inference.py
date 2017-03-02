@@ -4,6 +4,7 @@ import os
 import tensorflow as tf
 
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
+from biomedical_qa.data.entity_tagger import get_entity_tagger
 from biomedical_qa.inference.inference import Inferrer, get_session, get_model
 from biomedical_qa.sampling.squad import SQuADSampler
 
@@ -59,9 +60,11 @@ if __name__ == "__main__":
 
     # Build sampler from dataset JSON
     bioasq_json, squad_json = load_dataset(FLAGS.bioasq_file)
+    tagger = get_entity_tagger()
     sampler = SQuADSampler(None, None, FLAGS.batch_size,
                            inferrer.model.embedder.vocab,
-                           shuffle=False, dataset_json=squad_json)
+                           shuffle=False, dataset_json=squad_json,
+                           tagger=tagger)
 
     contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
