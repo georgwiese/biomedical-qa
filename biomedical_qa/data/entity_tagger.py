@@ -70,7 +70,7 @@ class EntityTagger(object):
 
         self.types_set = types_set
         self.num_types = len(self.types_set)
-        self.type2id = {type: i for i, type in enumerate(self.types_set)}
+        self.type2id = {type: i for i, type in enumerate(sorted(self.types_set))}
         self.id2type = {id: type for type, id in self.type2id.items()}
 
 
