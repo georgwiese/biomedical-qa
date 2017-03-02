@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 from biomedical_qa.data.entity_tagger import DictionaryEntityTagger, \
-    OleloEntityTagger
+    OleloEntityTagger, CtakesEntityTagger
 from biomedical_qa.inference.inference import Inferrer, get_model, get_session
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
@@ -35,8 +35,9 @@ tf.app.flags.DEFINE_boolean("find_perfect_cutoff", False, "If true, cut off each
 tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given answers.")
 
 # Entity tagger settings
-tf.app.flags.DEFINE_string("entity_tagger", None, "[dictionary, olelo], or None.")
-tf.app.flags.DEFINE_string("olelo_host", "192.168.30.161:8000", "Olelo host:port.")
+tf.app.flags.DEFINE_string("entity_tagger", None, "[dictionary, olelo, ctakes], or None.")
+tf.app.flags.DEFINE_string("olelo_url", "https://ares.epic.hpi.uni-potsdam.de/CJosfa64Kz46H7M6/rest/api1/analyze", "Olelo URL.")
+tf.app.flags.DEFINE_string("ctakes_url", "http://localhost:9876/ctakes", "CTakes URL.")
 tf.app.flags.DEFINE_string("entity_blacklist_file", None, "Blacklist file.")
 tf.app.flags.DEFINE_string("terms_file", None, "UML Terms file (MRCONSO.RRF).")
 tf.app.flags.DEFINE_string("types_file", None, "UMLS Types file (MRSTY.RRF).")
@@ -67,7 +68,10 @@ def main():
                                         blacklist_file=FLAGS.entity_blacklist_file)
     elif FLAGS.entity_tagger == "olelo":
         print("Adding Olelo Tagger")
-        tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_host)
+        tagger = OleloEntityTagger(FLAGS.types_file, FLAGS.olelo_url)
+    elif FLAGS.entity_tagger == "ctakes":
+        print("Adding CTakes Tagger")
+        tagger = CtakesEntityTagger(FLAGS.types_file, FLAGS.ctakes_url)
     elif FLAGS.entity_tagger is not None:
         raise ValueError("Unrecognized entity tagger: %s" % FLAGS.entity_tagger)
 
