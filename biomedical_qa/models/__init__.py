@@ -14,13 +14,17 @@ class QASetting:
                  q_type=None,
                  is_yes=None,
                  paragraph_json=None,
-                 question_json=None):
+                 question_json=None,
+                 question_tags=None,
+                 contexts_tags=None):
         """
         :param question: list of indices
         :param answers:  list of list of list of indices:
                          (answers -> alternatives -> token ids)
         :param contexts: list of list indices
         :param answer_spans: list of list of (context_index, start, end) tuples
+        :param question_tags: list of set<int>, one entry per token
+        :param contexts_tags: list of list of set<int>
         :return:
         """
         self.question = question
@@ -34,6 +38,8 @@ class QASetting:
         self.is_yes = is_yes
         self.paragraph_json = paragraph_json
         self.question_json = question_json
+        self.question_tags = question_tags
+        self.contexts_tags = contexts_tags
 
     def translate(self, vocab, unk_id):
         self.question = [vocab.get(w, unk_id) for w in self.question]

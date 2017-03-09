@@ -1,12 +1,11 @@
 import os
 import tensorflow as tf
-import numpy as np
-
+from biomedical_qa.data.entity_tagger import get_entity_tagger
+from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 from biomedical_qa.inference.inference import Inferrer, get_model, get_session
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionGoalDefiner
-from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 
 tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file.')
 tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts on newline.')
@@ -50,19 +49,23 @@ def main():
     data_filename = os.path.basename(FLAGS.eval_data)
     instances = FLAGS.subsample if FLAGS.subsample > 0 else None
 
+    tagger = get_entity_tagger()
+
     list_sampler = None
     if not FLAGS.is_bioasq:
         sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
                                models[0].embedder.vocab,
                                instances_per_epoch=instances, shuffle=False,
-                               split_contexts_on_newline=FLAGS.split_contexts)
+                               split_contexts_on_newline=FLAGS.split_contexts,
+                               tagger=tagger)
     else:
         sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
                                 models[0].embedder.vocab,
                                 instances_per_epoch=instances, shuffle=False,
                                 split_contexts_on_newline=FLAGS.split_contexts,
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
-                                include_synonyms=FLAGS.bioasq_include_synonyms)
+                                include_synonyms=FLAGS.bioasq_include_synonyms,
+                                tagger=tagger)
 
 
         list_sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
@@ -71,7 +74,8 @@ def main():
                                      instances_per_epoch=instances, shuffle=False,
                                      split_contexts_on_newline=FLAGS.split_contexts,
                                      context_token_limit=FLAGS.bioasq_context_token_limit,
-                                     include_synonyms=FLAGS.bioasq_include_synonyms)
+                                     include_synonyms=FLAGS.bioasq_include_synonyms,
+                                     tagger=tagger)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")

@@ -3,6 +3,9 @@ import tensorflow as tf
 from biomedical_qa.models.embedder import Embedder
 from biomedical_qa.models.model import ConfigurableModel
 
+# UMLS has 127 types, round up to next even number
+NUM_ENTITY_TAGS = 128
+
 
 class QAModel(ConfigurableModel):
 
@@ -96,6 +99,10 @@ class ExtractionQAModel(QAModel):
             self._is_list = tf.placeholder(tf.bool, [None], "is_list")
             self._is_yesno = tf.placeholder(tf.bool, [None], "is_yesno")
 
+            # Tag features
+            self._question_tags = tf.placeholder(tf.bool, [None, None, NUM_ENTITY_TAGS], "question_tags")
+            self._context_tags = tf.placeholder(tf.bool, [None, None, NUM_ENTITY_TAGS], "context_tags")
+
             # Maps context index to question index
             self.context_partition = tf.placeholder(tf.int64, [None], "context_partition")
 
@@ -156,12 +163,17 @@ class ExtractionQAModel(QAModel):
         is_list = []
         is_yesno = []
 
+        question_tags = []
+        context_tags = []
+
         context_partition = []
 
         max_q_length = max([len(s.question) for s in qa_settings])
         max_c_length = max([len(c) for s in qa_settings for c in s.contexts])
         for i, qa_setting in enumerate(qa_settings):
             question.append(qa_setting.question + [0] * (max_q_length - len(qa_setting.question)))
+            question_tags.append(self._build_tags_array(qa_setting.question_tags)
+                                 + [[0] * NUM_ENTITY_TAGS] * (max_q_length - len(qa_setting.question)))
             question_length.append(len(qa_setting.question))
 
             is_factoid.append(qa_setting.q_type == "factoid")
@@ -169,8 +181,10 @@ class ExtractionQAModel(QAModel):
             is_yesno.append(qa_setting.q_type == "yesno")
 
             assert len(qa_setting.contexts) > 0
-            for c in qa_setting.contexts:
+            for c, tags in zip(qa_setting.contexts, qa_setting.contexts_tags):
                 context.append(c + [0] * (max_c_length - len(c)))
+                context_tags.append(self._build_tags_array(tags)
+                                    + [[0] * NUM_ENTITY_TAGS] * (max_c_length - len(c)))
                 is_q_word.append([1.0 if w in qa_setting.question else 0.0 for w in context[-1]])
                 context_length.append(len(c))
                 context_partition.append(i)
@@ -180,11 +194,24 @@ class ExtractionQAModel(QAModel):
         feed_dict[self._is_list] = is_list
         feed_dict[self._is_factoid] = is_factoid
         feed_dict[self._is_yesno] = is_yesno
+        feed_dict[self._question_tags] = question_tags
+        feed_dict[self._context_tags] = context_tags
         feed_dict.update(self.embedder.get_feed_dict(context, context_length))
         feed_dict.update(self.question_embedder.get_feed_dict(question, question_length))
         feed_dict[self._word_in_question] = is_q_word
 
         return feed_dict
+
+    def _build_tags_array(self, tags):
+        result = [[False for _ in range(NUM_ENTITY_TAGS)]
+                  for _ in tags]
+
+        for token, token_tags in enumerate(tags):
+            for tag in token_tags:
+                assert tag < NUM_ENTITY_TAGS
+                result[token][tag] = True
+
+        return result
 
     def run(self, sess, goal, qa_settings):
         return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings))

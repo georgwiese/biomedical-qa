@@ -135,6 +135,7 @@ class BioAsqSquadBuilder(object):
                 {
                     "id": question["id"],
                     "question": question["body"].lower(),
+                    "question_original_capitalization": question["body"],
                     "question_type": question["type"]
                 }
             ]

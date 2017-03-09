@@ -11,7 +11,8 @@ class BioAsqSampler(SQuADSampler):
     def __init__(self, dir, filenames, batch_size, vocab,
                  instances_per_epoch=None, shuffle=True, dataset_json=None,
                  types=None, split_contexts_on_newline=False,
-                 context_token_limit=-1, include_synonyms=False):
+                 context_token_limit=-1, include_synonyms=False,
+                 tagger=None):
 
         if dataset_json is None:
             # load json
@@ -28,4 +29,4 @@ class BioAsqSampler(SQuADSampler):
                               instances_per_epoch=instances_per_epoch,
                               shuffle=shuffle, types=types,
                               split_contexts_on_newline=split_contexts_on_newline,
-                              dataset_json=squad_json)
+                              dataset_json=squad_json, tagger=tagger)

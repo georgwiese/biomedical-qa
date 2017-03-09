@@ -20,14 +20,33 @@ np.random.seed(1234)
 dev_path_types = FLAGS.dev_path_types.split(",")
 random_assign_types = FLAGS.random_assign_types.split(",")
 
+def deduplicate(questions):
+
+    question_texts = set()
+    filtered_questions = []
+
+    for question in questions:
+        question_text = question["body"].lower()
+        if question_text not in question_texts:
+            question_texts.add(question_text)
+            filtered_questions.append(question)
+
+    return filtered_questions
+
 
 def split_bioasq(bioasq_file_path, out_dir, dev_id_file):
 
-    with open(dev_id_file) as f:
-        dev_ids = set(f.read().split("\n"))
+    if dev_id_file is not None:
+        with open(dev_id_file) as f:
+            dev_ids = set(f.read().split("\n"))
+    else:
+        assert len(dev_path_types) == 0, "No dev ids file provided, but dev_path_types not empty"
+        dev_ids = None
 
     with open(bioasq_file_path) as f:
         all_questions = json.load(f)["questions"]
+
+    all_questions = deduplicate(all_questions)
 
     dev_questions = []
     train_questions = []
