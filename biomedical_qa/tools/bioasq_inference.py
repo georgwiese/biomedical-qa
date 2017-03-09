@@ -75,7 +75,7 @@ if __name__ == "__main__":
     bioasq_json, squad_json = load_dataset(FLAGS.bioasq_file)
     tagger = get_entity_tagger()
     sampler = SQuADSampler(None, None, FLAGS.batch_size,
-                           inferrer.model.embedder.vocab,
+                           inferrer.models[0].embedder.vocab,
                            shuffle=False, dataset_json=squad_json,
                            tagger=tagger)
 

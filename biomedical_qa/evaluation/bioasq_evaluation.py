@@ -197,7 +197,7 @@ class BioAsqEvaluator(object):
                                list_answer_prob_threshold=None,
                                verbosity_level=0):
 
-        if self.inferrer.model.start_output_unit == "sigmoid" and \
+        if self.inferrer.models[0].start_output_unit == "sigmoid" and \
                 list_answer_prob_threshold is not None:
             # We get individual probabilities for each answer, can threshold.
             filtered_answers = [(a, prob) for a, prob in answers

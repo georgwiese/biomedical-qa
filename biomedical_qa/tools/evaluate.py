@@ -1,18 +1,15 @@
 import os
 import tensorflow as tf
-import numpy as np
-
 from biomedical_qa.data.entity_tagger import get_entity_tagger
+from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 from biomedical_qa.inference.inference import Inferrer, get_model, get_session
 from biomedical_qa.sampling.bioasq import BioAsqSampler
 from biomedical_qa.sampling.squad import SQuADSampler
 from biomedical_qa.training.qa_trainer import ExtractionGoalDefiner
-from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 
 tf.app.flags.DEFINE_string('eval_data', None, 'Path to the SQuAD JSON file.')
 tf.app.flags.DEFINE_boolean('split_contexts', False, 'Whether to split contexts on newline.')
-tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
-tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
+tf.app.flags.DEFINE_string('model_config', None, 'Comma-separated list of paths to the model configs.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 
 tf.app.flags.DEFINE_boolean("is_bioasq", False, "Whether the provided dataset is a BioASQ json.")
@@ -43,8 +40,9 @@ def main():
     devices = FLAGS.devices.split(",")
 
     sess = get_session()
-    model = get_model(sess, FLAGS.model_config, devices, FLAGS.model_weights)
-    inferrer = Inferrer(model, sess, FLAGS.beam_size)
+    models = [get_model(sess, config, devices, scope="model_%d" % i)
+              for i, config in enumerate(FLAGS.model_config.split(","))]
+    inferrer = Inferrer(models, sess, FLAGS.beam_size)
 
     print("Initializing Sampler & Trainer...")
     data_dir = os.path.dirname(FLAGS.eval_data)
@@ -56,13 +54,13 @@ def main():
     list_sampler = None
     if not FLAGS.is_bioasq:
         sampler = SQuADSampler(data_dir, [data_filename], FLAGS.batch_size,
-                               inferrer.model.embedder.vocab,
+                               models[0].embedder.vocab,
                                instances_per_epoch=instances, shuffle=False,
                                split_contexts_on_newline=FLAGS.split_contexts,
                                tagger=tagger)
     else:
         sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
-                                inferrer.model.embedder.vocab,
+                                models[0].embedder.vocab,
                                 instances_per_epoch=instances, shuffle=False,
                                 split_contexts_on_newline=FLAGS.split_contexts,
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
@@ -71,7 +69,7 @@ def main():
 
 
         list_sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
-                                     inferrer.model.embedder.vocab,
+                                     models[0].embedder.vocab,
                                      types=["list"],
                                      instances_per_epoch=instances, shuffle=False,
                                      split_contexts_on_newline=FLAGS.split_contexts,
@@ -81,8 +79,8 @@ def main():
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
-        trainer = ExtractionGoalDefiner(inferrer.model, devices[0])
-        trainer.eval(inferrer.sess, sampler, verbose=True)
+        trainer = ExtractionGoalDefiner(models[0], devices[0])
+        trainer.eval(sess, sampler, verbose=True)
 
     list_answer_prob_threshold = FLAGS.list_answer_prob_threshold
     list_answer_count = FLAGS.list_answer_count

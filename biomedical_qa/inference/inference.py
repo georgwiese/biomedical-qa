@@ -23,22 +23,27 @@ class InferenceResult(object):
         return zip(self.answer_strings, self.answer_probs)
 
 
-def get_model(sess, model_config_file, devices, model_weights_file=None):
+def get_model(sess, model_config_file, devices, model_weights_file=None,
+              scope="model"):
 
+    with tf.variable_scope(scope):
+        print("Loading Model:", model_config_file)
+        with open(model_config_file, 'rb') as f:
+            model_config = pickle.load(f)
 
-    print("Loading Model...")
-    with open(model_config_file, 'rb') as f:
-        model_config = pickle.load(f)
-    model = model_from_config(model_config, devices)
+        model = model_from_config(model_config, devices)
 
-    if model_weights_file is None:
-        train_dir = os.path.dirname(model_config_file)
-        model_weights_file = tf.train.latest_checkpoint(train_dir)
-        print("Using weights: %s" % model_weights_file)
+        if model_weights_file is None:
+            train_dir = os.path.dirname(model_config_file)
+            model_weights_file = tf.train.latest_checkpoint(train_dir)
+            print("Using weights: %s" % model_weights_file)
 
-    print("Restoring Weights...")
-    sess.run(tf.global_variables_initializer())
-    model.model_saver.restore(sess, model_weights_file)
+        print("Restoring Weights...")
+        # Remove scope prefix and ":0" suffix
+        save_variables = {v.name[len(scope) + 1:-2]: v for v in model.save_variables}
+        # print(tf.contrib.framework.checkpoint_utils.list_variables(model_weights_file))
+        saver = tf.train.Saver(save_variables)
+        saver.restore(sess, model_weights_file)
 
     return model
 
@@ -52,18 +57,22 @@ def get_session():
 class Inferrer(object):
 
 
-    def __init__(self, model, sess, beam_size):
+    def __init__(self, model_or_models, sess, beam_size):
 
-        self.model = model
+        if isinstance(model_or_models, list):
+            self.models = model_or_models
+        else:
+            self.models = [model_or_models]
         self.sess = sess
         self.beam_size = beam_size
 
         # If true, each start has its own probability to allow for multiple starts
-        self.unnormalized_probs = self.model.start_output_unit == "sigmoid"
+        self.unnormalized_probs = self.models[0].start_output_unit == "sigmoid"
 
-        self.model.set_eval(self.sess)
+        for model in self.models:
+            model.set_eval(self.sess)
 
-        self.beam_search_decoder = BeamSearchDecoder(self.sess, self.model,
+        self.beam_search_decoder = BeamSearchDecoder(self.sess, self.models,
                                                      beam_size)
 
 
