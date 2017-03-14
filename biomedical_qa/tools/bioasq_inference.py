@@ -6,7 +6,7 @@ import tensorflow as tf
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
 from biomedical_qa.data.entity_tagger import get_entity_tagger
 from biomedical_qa.inference.inference import Inferrer, get_session, get_model
-from biomedical_qa.inference.postprocessing import DeduplicatePostprocessor, ProbabilityThresholdPostprocessor, TopKPostprocessor
+from biomedical_qa.inference.postprocessing import DeduplicatePostprocessor, ProbabilityThresholdPostprocessor, TopKPostprocessor, PreferredTermPreprocessor
 from biomedical_qa.sampling.squad import SQuADSampler
 
 tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
-    post_processor = DeduplicatePostprocessor()
+    post_processor = PreferredTermPreprocessor(FLAGS.terms_file).chain(DeduplicatePostprocessor())
     answers = {q_id: post_processor.process(inference_result)
                for q_id, inference_result in inferrer.get_predictions(sampler).items()}
     bioasq_json = insert_answers(bioasq_json, answers)

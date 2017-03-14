@@ -5,7 +5,7 @@ import itertools
 import numpy as np
 
 from biomedical_qa.data.bioasq_squad_builder import ensure_list_depth_2
-from biomedical_qa.inference.postprocessing import TopKPostprocessor, ProbabilityThresholdPostprocessor, DeduplicatePostprocessor
+from biomedical_qa.inference.postprocessing import TopKPostprocessor, ProbabilityThresholdPostprocessor, DeduplicatePostprocessor, PreferredTermPreprocessor
 
 
 def element_wise_mean(list_of_tuples):
@@ -17,10 +17,16 @@ def element_wise_mean(list_of_tuples):
 class BioAsqEvaluator(object):
 
 
-    def __init__(self, sampler, inferrer):
+    def __init__(self, sampler, inferrer, terms_file=None):
 
         self.sampler = sampler
         self.inferrer = inferrer
+        self.postprocessor = DeduplicatePostprocessor()
+
+        if terms_file is not None:
+            self.postprocessor = self.postprocessor.chain(PreferredTermPreprocessor(terms_file)) \
+                                    .chain(DeduplicatePostprocessor())
+
         self.predictions = None
 
 
@@ -99,8 +105,8 @@ class BioAsqEvaluator(object):
         use_list_prob_threshold = self.inferrer.models[0].start_output_unit == "sigmoid" and \
                                   list_answer_prob_threshold is not None
 
-        factoid_postprocessor = DeduplicatePostprocessor().chain(TopKPostprocessor(5))
-        list_postprocessor = DeduplicatePostprocessor().chain(
+        factoid_postprocessor = self.postprocessor.chain(TopKPostprocessor(5))
+        list_postprocessor = self.postprocessor.chain(
             ProbabilityThresholdPostprocessor(list_answer_prob_threshold, 1)
             if use_list_prob_threshold
             else TopKPostprocessor(list_answer_count))

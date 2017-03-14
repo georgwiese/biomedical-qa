@@ -1,45 +1,42 @@
 import abc
 import itertools
+from biomedical_qa.data.umls import build_term2preferred
 
 
 class AbstractPostprocessor(object):
 
 
-    def __init__(self):
-
-        self._chained_postprocessors = []
-
-
     def chain(self, post_processor):
 
-        self._chained_postprocessors.append(post_processor)
-        return self
-
-
-    def process(self, answers_probs):
-
-        answers_probs = self._process(answers_probs)
-        for postprocessor in self._chained_postprocessors:
-            answers_probs = postprocessor.process(answers_probs)
-        return answers_probs
+        return ChainedPostprocessor([self, post_processor])
 
 
     @abc.abstractmethod
-    def _process(self, answers_probs):
+    def process(self, answers_probs):
         """Given a (answer_string, prob) iterable, yields a modified (answer_string, prob) iterable."""
 
         raise NotImplementedError("Subclass Responsibility")
 
 
+class ChainedPostprocessor(AbstractPostprocessor):
+
+
+    def __init__(self, postprocessors):
+
+        self._postprocessors = postprocessors
+
+
+    def process(self, answers_probs):
+
+        for postprocessor in self._postprocessors:
+            answers_probs = postprocessor.process(answers_probs)
+        return answers_probs
+
+
 class NullPostprocessor(AbstractPostprocessor):
 
 
-    def __init__(self):
-
-        AbstractPostprocessor.__init__(self)
-
-
-    def _process(self, answers_probs):
+    def process(self, answers_probs):
 
         return answers_probs
 
@@ -47,12 +44,7 @@ class NullPostprocessor(AbstractPostprocessor):
 class DeduplicatePostprocessor(AbstractPostprocessor):
 
 
-    def __init__(self):
-
-        AbstractPostprocessor.__init__(self)
-
-
-    def _process(self, answers_probs):
+    def process(self, answers_probs):
 
         answer_strings = set()
 
@@ -70,10 +62,9 @@ class ProbabilityThresholdPostprocessor(AbstractPostprocessor):
 
         self.prob_threshold = prob_threshold
         self.min_count = min_count
-        AbstractPostprocessor.__init__(self)
 
 
-    def _process(self, answers_probs):
+    def process(self, answers_probs):
 
         for (answer_string, prob), i in zip(answers_probs, itertools.count()):
             if i < self.min_count or prob > self.prob_threshold:
@@ -82,16 +73,39 @@ class ProbabilityThresholdPostprocessor(AbstractPostprocessor):
 
 class TopKPostprocessor(AbstractPostprocessor):
 
+
     def __init__(self, k):
 
         self.k = k
-        AbstractPostprocessor.__init__(self)
 
-    def _process(self, answers_probs):
+
+    def process(self, answers_probs):
 
         for (answer_string, prob), i in zip(answers_probs, itertools.count()):
 
             if i >= self.k:
                 break
+
+            yield (answer_string, prob)
+
+
+class PreferredTermPreprocessor(AbstractPostprocessor):
+
+
+    def __init__(self, terms_file, case_sensitive=True):
+
+        self.case_sensitive = case_sensitive
+        self.term2preferred = build_term2preferred(terms_file, case_sensitive)
+
+
+    def process(self, answers_probs):
+
+        for answer_string, prob in answers_probs:
+
+            if not self.case_sensitive:
+                answer_string = answer_string.lower()
+
+            if answer_string in self.term2preferred:
+                answer_string = self.term2preferred[answer_string]
 
             yield (answer_string, prob)
