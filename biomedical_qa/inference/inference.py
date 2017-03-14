@@ -102,31 +102,18 @@ class Inferrer(object):
 
     def extract_answers(self, context, prediction, all_char_offsets):
 
-        answer2index = {}
         answers = []
-        filtered_probs = []
+        probs = []
 
         for context_index, start, end, prob in prediction:
             char_offsets = {token_index: char_offset
                             for (c_index, token_index), char_offset in all_char_offsets.items()
                             if c_index == context_index}
-            answer = self.extract_answer(context, (start, end), char_offsets)
-
-            # Deduplicate
-            if answer.lower() not in answer2index:
-                answer2index.update({answer.lower() : len(answers)})
-                answers.append(answer)
-                filtered_probs.append(prob)
-            else:
-                # Duplicate mentions should add their probs
-                index = answer2index[answer.lower()]
-                if self.unnormalized_probs:
-                    filtered_probs[index] = max(filtered_probs[index], prob)
-                else:
-                    filtered_probs[index] += prob
+            answers.append(self.extract_answer(context, (start, end), char_offsets))
+            probs.append(prob)
 
         # Sort by new probability
-        answers_probs = list(zip(answers, filtered_probs))
+        answers_probs = list(zip(answers, probs))
         answers_probs.sort(key=lambda x : -x[1])
 
         return zip(*answers_probs)

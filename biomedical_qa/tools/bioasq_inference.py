@@ -6,6 +6,7 @@ import tensorflow as tf
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
 from biomedical_qa.data.entity_tagger import get_entity_tagger
 from biomedical_qa.inference.inference import Inferrer, get_session, get_model
+from biomedical_qa.inference.postprocessing import DeduplicatePostprocessor, ProbabilityThresholdPostprocessor, TopKPostprocessor
 from biomedical_qa.sampling.squad import SQuADSampler
 
 tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
@@ -36,9 +37,12 @@ def load_dataset(path):
 
 def insert_answers(bioasq_json, answers):
     """Inserts answers into bioasq_json from a
-    <question id> -> InferenceResult map."""
+    <question id> -> <(<answer_string>, <prob>) iterable>."""
 
     questions = []
+
+    factoid_postprocessor = TopKPostprocessor(5)
+    list_postprocessor = ProbabilityThresholdPostprocessor(FLAGS.list_answer_prob_threshold, 1)
 
     for question in bioasq_json["questions"]:
         q_id = question["id"]
@@ -47,10 +51,10 @@ def insert_answers(bioasq_json, answers):
 
             if question["type"] == "list":
                 answer_strings = [answer_string
-                                  for answer_string, answer_prob in answers[q_id]
-                                  if answer_prob > FLAGS.list_answer_prob_threshold]
+                                  for answer_string, answer_prob in list_postprocessor.process(answers[q_id])]
             else:
-                answer_strings = answers[q_id].answer_strings[:5]
+                answer_strings = [answer_string
+                                  for answer_string, answer_prob in factoid_postprocessor.process(answers[q_id])]
 
             if len(answer_strings) == 0:
                 answer_strings = [answers[q_id].answer_strings[0]]
@@ -82,7 +86,9 @@ if __name__ == "__main__":
 
     contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
-    answers = inferrer.get_predictions(sampler)
+    post_processor = DeduplicatePostprocessor()
+    answers = {q_id: post_processor.process(inference_result)
+               for q_id, inference_result in inferrer.get_predictions(sampler).items()}
     bioasq_json = insert_answers(bioasq_json, answers)
 
     os.makedirs(os.path.dirname(FLAGS.out_file), exist_ok=True)
