@@ -10,8 +10,7 @@ from biomedical_qa.sampling.squad import SQuADSampler
 
 tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
 tf.app.flags.DEFINE_string('out_file', None, 'Path to the output file.')
-tf.app.flags.DEFINE_string('model_config', None, 'Path to the Model config.')
-tf.app.flags.DEFINE_string('model_weights', None, 'Path to the Model weights.')
+tf.app.flags.DEFINE_string('model_config', None, 'Comma-separated list of paths to the model configs.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 
 tf.app.flags.DEFINE_integer("batch_size", 32, "Number of examples in each batch.")
@@ -57,8 +56,9 @@ def insert_answers(bioasq_json, answers):
                 answer_strings = [answers[q_id].answer_strings[0]]
 
             question["exact_answer"] = [[s] for s in answer_strings]
-            question["ideal_answer"] = ""
-            questions.append(question)
+
+        question["ideal_answer"] = ""
+        questions.append(question)
 
     return {"questions": questions}
 
@@ -68,8 +68,9 @@ if __name__ == "__main__":
     devices = FLAGS.devices.split(",")
 
     sess = get_session()
-    model = get_model(sess, FLAGS.model_config, devices, FLAGS.model_weights)
-    inferrer = Inferrer(model, sess, FLAGS.beam_size)
+    models = [get_model(sess, config, devices, scope="model_%d" % i)
+              for i, config in enumerate(FLAGS.model_config.split(","))]
+    inferrer = Inferrer(models, sess, FLAGS.beam_size)
 
     # Build sampler from dataset JSON
     bioasq_json, squad_json = load_dataset(FLAGS.bioasq_file)
