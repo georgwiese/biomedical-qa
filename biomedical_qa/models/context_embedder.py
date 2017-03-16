@@ -1,4 +1,4 @@
-from tensorflow.python.ops.rnn_cell import RNNCell
+from tensorflow.contrib.rnn import RNNCell
 from biomedical_qa.models.embedder import *
 
 
@@ -231,7 +231,7 @@ class _AttentionTapeRNNCell(RNNCell):
 
         matched_word = tf.reduce_sum(tf.expand_dims(weights, 2) * word_tape_reshaped, [1])
         matched_context = tf.reduce_sum(tf.expand_dims(weights, 2) * context_tape_reshaped, [1])
-        
+
         with tf.variable_scope("selection"):
             inter = tf.concat(axis=1, values=[matched_context * new_key, matched_word * new_key])
             selection_gate = tf.contrib.layers.fully_connected(inter, self._size,

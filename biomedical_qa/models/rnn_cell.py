@@ -1,4 +1,4 @@
-from tensorflow.python.ops.rnn_cell import RNNCell, GRUCell, BasicLSTMCell, \
+from tensorflow.contrib.rnn import RNNCell, GRUCell, BasicLSTMCell, \
     LSTMStateTuple
 import tensorflow as tf
 import numpy as np

@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.python.ops.rnn_cell import RNNCell
+from tensorflow.contrib.rnn import RNNCell
 
 from biomedical_qa import tfutil
 
@@ -9,7 +9,7 @@ def bilinear_attention(att_states, att_lengths, queries, query_lengths, size, ba
                                                              activation_fn=None,
                                                              weights_initializer=None)
     # [B, Q, L] --  Q is length of query
-    attention_scores = tf.matmul(queries, attention_key, adj_y=True)
+    attention_scores = tf.matmul(queries, attention_key, adjoint_b=True)
     max_length = tf.cast(tf.reduce_max(query_lengths), tf.int32)
     max_query_length = tf.cast(tf.reduce_max(att_lengths), tf.int32)
     mask = tfutil.mask_for_lengths(att_lengths, batch_size, max_length=max_query_length)
@@ -24,7 +24,7 @@ def bilinear_attention(att_states, att_lengths, queries, query_lengths, size, ba
 
 def dot_co_attention(states1, lengths1, states2, lengths2, batch_size=None):
     # [B, L1, L2]
-    attention_scores = tf.matmul(states1, states2, adj_y=True)
+    attention_scores = tf.matmul(states1, states2, adjoint_b=True)
     return extract_co_attention_states(attention_scores, states1, lengths1, states2, lengths2, batch_size)
 
 

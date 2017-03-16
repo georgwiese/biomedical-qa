@@ -45,7 +45,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
+from tensorflow.contrib.rnn import RNNCell
 from tensorflow.python.ops import variable_scope as vs
 
 __all__ = ["crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
@@ -261,7 +261,7 @@ def crf_binary_score(tag_indices, sequence_lengths, transition_params):
     return binary_scores
 
 
-class CrfForwardRnnCell(rnn_cell.RNNCell):
+class CrfForwardRnnCell(RNNCell):
     """Computes the alpha values in a linear-chain CRF.
     See http://www.cs.columbia.edu/~mcollins/fb.pdf for reference.
     """
@@ -312,7 +312,7 @@ class CrfForwardRnnCell(rnn_cell.RNNCell):
         return new_alphas, new_alphas
 
 
-class CrfViterbiRnnCell(rnn_cell.RNNCell):
+class CrfViterbiRnnCell(RNNCell):
 
     def __init__(self, transition_params):
         """Initialize the CrfForwardRnnCell.
@@ -340,7 +340,7 @@ class CrfViterbiRnnCell(rnn_cell.RNNCell):
         return new_backpointer, new_trellis
 
 
-class CrfExtractBackpointerRnnCell(rnn_cell.RNNCell):
+class CrfExtractBackpointerRnnCell(RNNCell):
 
     def __init__(self, num_tags):
         self._num_tags = num_tags

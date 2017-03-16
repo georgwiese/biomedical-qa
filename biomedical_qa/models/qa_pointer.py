@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from tensorflow.python.ops.rnn import bidirectional_dynamic_rnn
 from tensorflow.contrib.rnn import LSTMBlockCell, GRUBlockCell
-from tensorflow.python.ops.rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn import BasicRNNCell
 
 from biomedical_qa.models.attention import dot_co_attention
 from biomedical_qa.models.qa_model import ExtractionQAModel

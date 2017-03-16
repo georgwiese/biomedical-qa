@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.rnn import GRUBlockCell, LSTMBlockCell, LSTMBlockFusedCell, FusedRNNCellAdaptor
 from tensorflow.python.ops.rnn import dynamic_rnn
-from tensorflow.python.ops.rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn import BasicRNNCell
 
 from biomedical_qa import tfutil
 from biomedical_qa.models.qa_model import ExtractionQAModel
@@ -70,7 +70,7 @@ class QASimplePointerModel(ExtractionQAModel):
                     #masked_question = self.question_embedder.output * mask
                     # [B, Q, L]
                     q2c_scores = tf.matmul(self._embedded_question_not_dropped * mask,
-                                                 self._embedded_context_not_dropped, adj_y=True)
+                                                 self._embedded_context_not_dropped, adjoint_b=True)
                     q2c_scores = q2c_scores + tf.expand_dims(self.context_mask, 1)
                     #c2q_weights = tf.reduce_max(q2c_scores / (tf.reduce_max(q2c_scores, [2], keep_dims=True) + 1e-5), [1])
 
@@ -151,7 +151,7 @@ class QASimplePointerModel(ExtractionQAModel):
                         mask = tf.nn.relu(mask)
                         for i in range(1):
                             # [B, Q, L]
-                            inter_scores = tf.matmul(self.encoded_question * mask, self.encoded_ctxt, adj_y=True)
+                            inter_scores = tf.matmul(self.encoded_question * mask, self.encoded_ctxt, adjoint_b=True)
                             inter_scores = inter_scores + tf.expand_dims(self.context_mask, 1)
 
                             inter_weights = tf.nn.softmax(inter_scores)
@@ -217,7 +217,7 @@ class QASimplePointerModel(ExtractionQAModel):
                     if i > 1:
                         vs.reuse_variables()
                     # [B, L, L]
-                    intra_scores = tf.matmul(mask * projected, projected, adj_y=True) \
+                    intra_scores = tf.matmul(mask * projected, projected, adjoint_b=True) \
                                    + tf.expand_dims(self.context_mask, 1)
                     intra_scores = tf.matrix_set_diag(intra_scores, diag)
                     intra_weights = tf.nn.softmax(intra_scores)
