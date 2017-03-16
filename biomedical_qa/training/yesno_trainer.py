@@ -28,7 +28,7 @@ class YesNoGoalDefiner(GoalDefiner):
 
             model = self.model
             self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                model.yesno_scores, tf.cast(self.correct_is_yes, tf.float32)))
+                logits=model.yesno_scores, labels=tf.cast(self.correct_is_yes, tf.float32)))
 
             correctly_predicted_yes = tf.logical_and(self.correct_is_yes,
                                                      tf.greater_equal(model.yesno_probs, 0.5))
@@ -65,13 +65,13 @@ class YesNoGoalDefiner(GoalDefiner):
 
             with tf.name_scope("summaries"):
                 self._train_summaries = [
-                    tf.scalar_summary("yesno_loss", self._loss),
-                    tf.scalar_summary("yesno_acc", self.accuracy),
-                    tf.scalar_summary("yesno_yes_acc", self.yes_accuracy),
-                    tf.scalar_summary("yesno_no_acc", self.no_accuracy),
-                    tf.scalar_summary("yesno_yes_prob", self.mean_yes_prob),
-                    tf.scalar_summary("yesno_no_prob", self.mean_no_prob),
-                    tf.histogram_summary("yesno_probs", model.yesno_probs),
+                    tf.summary.scalar("yesno_loss", self._loss),
+                    tf.summary.scalar("yesno_acc", self.accuracy),
+                    tf.summary.scalar("yesno_yes_acc", self.yes_accuracy),
+                    tf.summary.scalar("yesno_no_acc", self.no_accuracy),
+                    tf.summary.scalar("yesno_yes_prob", self.mean_yes_prob),
+                    tf.summary.scalar("yesno_no_prob", self.mean_no_prob),
+                    tf.summary.histogram("yesno_probs", model.yesno_probs),
                 ]
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):

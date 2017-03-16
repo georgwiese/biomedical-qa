@@ -98,14 +98,14 @@ class RNNContextEmbedder(ContextEmbedder):
                 outs_fw_tmp = tf.nn.dynamic_rnn(cell, embedded, seq_lengths,
                                                 initial_state=init_state_fw, time_major=False)[0]
 
-                outs_fw = tf.slice(tf.concat(1, [tf.expand_dims(init_state_fw, 1), outs_fw_tmp]),
+                outs_fw = tf.slice(tf.concat(axis=1, values=[tf.expand_dims(init_state_fw, 1), outs_fw_tmp]),
                                    [0, 0, 0], tf.shape(outs_fw_tmp))
                 out_fw = tf.reshape(outs_fw, [-1, self.size])
 
                 if self._forward_only:
                     context_encoded = tf.contrib.layers.fully_connected(out_fw, self.size, weights_initializer=None, activation_fn=None)
 
-                    context_encoded = tf.reshape(context_encoded, tf.pack([-1, self.max_length, self.size])) + outs_fw
+                    context_encoded = tf.reshape(context_encoded, tf.stack([-1, self.max_length, self.size])) + outs_fw
                     context_encoded.set_shape((None, None, self.size))
 
                     return context_encoded
@@ -118,7 +118,7 @@ class RNNContextEmbedder(ContextEmbedder):
                 rev_embedded = tf.reverse_sequence(embedded, seq_lengths, 1, 0)
                 outs_bw_tmp = tf.nn.dynamic_rnn(cell, rev_embedded, seq_lengths, initial_state=init_state_bw, time_major=False)[0]
 
-                outs_bw = tf.slice(tf.concat(1, [tf.expand_dims(init_state_bw, 1), outs_bw_tmp]),
+                outs_bw = tf.slice(tf.concat(axis=1, values=[tf.expand_dims(init_state_bw, 1), outs_bw_tmp]),
                                    [0, 0, 0], tf.shape(outs_bw_tmp))
 
                 outs_bw = tf.reverse_sequence(outs_bw, seq_lengths, 1, 0)
@@ -129,14 +129,14 @@ class RNNContextEmbedder(ContextEmbedder):
                                  lambda: out_bw)
 
             context_encoded = tf.contrib.layers.fully_connected(
-                tf.concat(1, [out_fw, out_bw]), self.size,
+                tf.concat(axis=1, values=[out_fw, out_bw]), self.size,
                 weights_initializer=None, activation_fn=None
             )
 
             context_encoded = tf.add_n([context_encoded, out_fw, out_bw])
-            context_encoded = tf.reshape(context_encoded, tf.pack([-1, self.max_length, self.size]))
+            context_encoded = tf.reshape(context_encoded, tf.stack([-1, self.max_length, self.size]))
             context_encoded.set_shape((None, None, self.size))
-        return context_encoded, tf.concat(2, [outs_fw_tmp, outs_bw_tmp])
+        return context_encoded, tf.concat(axis=2, values=[outs_fw_tmp, outs_bw_tmp])
 
     def clone(self, **kwargs):
         return RNNContextEmbedder(self.underlying.clone(),
@@ -193,7 +193,7 @@ class _AttentionTapeRNNCell(RNNCell):
 
         with tf.variable_scope("key_gate"):
             g = tf.contrib.layers.fully_connected(
-                    tf.concat(1, [current_context, last_key]), self._size,
+                    tf.concat(axis=1, values=[current_context, last_key]), self._size,
                     weights_initializer=None, activation_fn=tf.sigmoid,
                     biases_initializer=tf.constant_initializer(1.0, tf.float32)
                 )
@@ -214,7 +214,7 @@ class _AttentionTapeRNNCell(RNNCell):
             #                )
             # [B, L, S_k]
             new_key_exp = tf.expand_dims(new_key, 1)
-            inter = tf.concat(2, [context_tape_reshaped * new_key_exp,
+            inter = tf.concat(axis=2, values=[context_tape_reshaped * new_key_exp,
                                   word_tape_reshaped * new_key_exp])
 
         with tf.variable_scope("attention"):
@@ -233,7 +233,7 @@ class _AttentionTapeRNNCell(RNNCell):
         matched_context = tf.reduce_sum(tf.expand_dims(weights, 2) * context_tape_reshaped, [1])
         
         with tf.variable_scope("selection"):
-            inter = tf.concat(1, [matched_context * new_key, matched_word * new_key])
+            inter = tf.concat(axis=1, values=[matched_context * new_key, matched_word * new_key])
             selection_gate = tf.contrib.layers.fully_connected(inter, self._size,
                                                      weights_initializer=None, activation_fn=tf.sigmoid)
 
@@ -248,11 +248,11 @@ class _AttentionTapeRNNCell(RNNCell):
 
         new_context = update_gate * matched + (1-update_gate) * current_context
 
-        new_context_tape = tf.concat(1, [tf.slice(context_tape, [0, self._size], [-1, -1]), new_context])
-        new_word_tape = tf.concat(1, [tf.slice(word_tape, [0, self._size], [-1, -1]), current_word])
+        new_context_tape = tf.concat(axis=1, values=[tf.slice(context_tape, [0, self._size], [-1, -1]), new_context])
+        new_word_tape = tf.concat(axis=1, values=[tf.slice(word_tape, [0, self._size], [-1, -1]), current_word])
 
         weighted_attention_weights = tf.reduce_mean(update_gate, [1], keep_dims=True) * weights
-        return tf.concat(1, [new_context, weighted_attention_weights]), (new_context_tape, new_word_tape, new_key)
+        return tf.concat(axis=1, values=[new_context, weighted_attention_weights]), (new_context_tape, new_word_tape, new_key)
 
     @property
     def output_size(self):
@@ -296,7 +296,7 @@ class AttentionMemoryContextEmbedder(ContextEmbedder):
 
         with tf.device(self._device1):
             with tf.variable_scope("attention"):
-                inputs = tf.concat(2, [embedded_context, embedded_words])
+                inputs = tf.concat(axis=2, values=[embedded_context, embedded_words])
                 self.attention_cell = _AttentionTapeRNNCell(self.tape_length, self.size)
                 retrieved = tf.nn.dynamic_rnn(self.attention_cell, inputs, self.seq_lengths, dtype=tf.float32)[0]
                 output = tf.slice(retrieved, [0, 0, 0], [-1, -1, self.size])

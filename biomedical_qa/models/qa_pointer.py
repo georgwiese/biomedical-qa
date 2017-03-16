@@ -106,7 +106,7 @@ class QAPointerModel(ExtractionQAModel):
                                         [-1, 1, null_word.get_shape()[0].value])
 
         rev_tensor = tf.reverse_sequence(tensor, lengths, 1)
-        rev_tensor = tf.concat(1, [reshaped_null_word, rev_tensor])
+        rev_tensor = tf.concat(axis=1, values=[reshaped_null_word, rev_tensor])
         new_tensor = tf.reverse_sequence(rev_tensor, lengths + 1, 1)
 
         return new_tensor, lengths + 1
@@ -123,7 +123,7 @@ class QAPointerModel(ExtractionQAModel):
             # same cell instance is passed
             encoded = bidirectional_dynamic_rnn(cell, cell, inputs, length,
                                                 dtype=tf.float32, time_major=False)[0]
-        encoded = tf.concat(2, encoded)
+        encoded = tf.concat(axis=2, values=encoded)
         projected = tf.contrib.layers.fully_connected(encoded, self.size,
                                                       activation_fn=tf.tanh,
                                                       weights_initializer=projection_initializer,
@@ -141,7 +141,7 @@ class QAPointerModel(ExtractionQAModel):
                                                          cell_constructor(size),
                                                          matched_output, sequence_length=self.context_length,
                                                          dtype=tf.float32)[0]
-        matched_output = tf.concat(2, matched_output)
+        matched_output = tf.concat(axis=2, values=matched_output)
         matched_output.set_shape([None, None, 2 * size])
 
         return matched_output
@@ -189,7 +189,7 @@ class QAPointerModel(ExtractionQAModel):
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
         with tf.variable_scope("end"):
-            end_input = tf.concat(1, [u_s, question_state])
+            end_input = tf.concat(axis=1, values=[u_s, question_state])
             end_scores = hmn(end_input, context_states, context_lengths)
 
         # Mask end scores for evaluation

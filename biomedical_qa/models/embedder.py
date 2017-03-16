@@ -119,7 +119,7 @@ class WordEmbedder(Embedder):
 
                 self._max_length = tf.cast(tf.reduce_max(self.seq_lengths), tf.int32)
                 self._batch_size = tf.shape(self.seq_lengths)[0]
-                self._sliced_inputs = tf.slice(inputs, (0, 0), tf.pack((-1, self.max_length)))
+                self._sliced_inputs = tf.slice(inputs, (0, 0), tf.stack((-1, self.max_length)))
                 self._embedded_words = tf.nn.embedding_lookup(self._embedding_matrix, self.sliced_inputs)
 
         self._train_variables = [self._embedding_matrix]
@@ -224,7 +224,7 @@ class ConstantWordEmbedder(WordEmbedder):
             with tf.variable_scope("embeddings"):
                 self._max_length = tf.cast(tf.reduce_max(self.seq_lengths), tf.int32)
                 self._batch_size = tf.shape(self.seq_lengths)[0]
-                self._sliced_inputs = tf.slice(inputs, (0, 0), tf.pack((-1, self.max_length)))
+                self._sliced_inputs = tf.slice(inputs, (0, 0), tf.stack((-1, self.max_length)))
                 self._embedded_words = tf.placeholder(tf.float32, [None, None, self.size], "embedded_words")
                 dummy_variable = tf.get_variable("dummy", dtype=tf.float32, initializer=0.0)
         self._train_variables = [dummy_variable]
@@ -332,7 +332,7 @@ class CharWordEmbedder(WordEmbedder):
 
                 self._max_length = tf.cast(tf.reduce_max(self.seq_lengths), tf.int32)
                 self._batch_size = tf.shape(self.seq_lengths)[0]
-                self._sliced_inputs = tf.slice(self.inputs, (0, 0), tf.pack((-1, self.max_length)))
+                self._sliced_inputs = tf.slice(self.inputs, (0, 0), tf.stack((-1, self.max_length)))
 
                 self.unique_words = tf.placeholder(tf.int64, [None], "unique_words") #tf.unique(tf.reshape(self._sliced_inputs, [-1]))
                 self._word_idx = tf.placeholder(tf.int64, [None], "word_idx")
@@ -341,7 +341,7 @@ class CharWordEmbedder(WordEmbedder):
                 chars = tf.nn.embedding_lookup(self._word_to_chars, self.unique_words)
                 wl = tf.nn.embedding_lookup(self._word_lengths, self.unique_words)
                 max_word_length = tf.cast(tf.reduce_max(wl), tf.int32)
-                chars = tf.slice(chars, [0, 0], tf.pack([-1, max_word_length]))
+                chars = tf.slice(chars, [0, 0], tf.stack([-1, max_word_length]))
 
                 embedded_chars = tf.nn.embedding_lookup(self.char_embedding_matrix, chars)
                 #embedded_chars_reshaped = tf.reshape(embedded_chars, tf.pack([-1, max_word_length, 4 *  self.size]))
@@ -359,7 +359,7 @@ class CharWordEmbedder(WordEmbedder):
                     self.unique_embedded_words = tf.reduce_max(conv_out, [1])
 
                     embedded_words = tf.gather(self.unique_embedded_words, self._word_idx)
-                    self._embedded_words = tf.reshape(embedded_words, tf.pack([-1, self.max_length, self.size]))
+                    self._embedded_words = tf.reshape(embedded_words, tf.stack([-1, self.max_length, self.size]))
 
         self._train_variables = [p for p in tf.trainable_variables() if self.name+"/embeddings" in p.name]
 
@@ -548,11 +548,11 @@ class ConcatEmbedder(Embedder):
         for e in self.embedders:
             self._train_variables.extend(e.train_variables)
 
-        self._embedded_words = tf.concat(2, [e.embedded_words for e in self.embedders])
+        self._embedded_words = tf.concat(axis=2, values=[e.embedded_words for e in self.embedders])
         if self.all_word_embedders:
             self._output = self._embedded_words
         else:
-            self._output = tf.concat(2, [e.output for e in self.embedders])
+            self._output = tf.concat(axis=2, values=[e.output for e in self.embedders])
 
     @property
     def max_length(self):

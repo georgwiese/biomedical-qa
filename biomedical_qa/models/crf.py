@@ -361,7 +361,7 @@ class CrfExtractBackpointerRnnCell(rnn_cell.RNNCell):
         :return: newlabel
         """
         # extract backpointer for this label
-        new_label = tf.gather_nd(backpointer, tf.concat(1, [tf.expand_dims(tf.range(0, tf.shape(last_label)[0]), 1),
+        new_label = tf.gather_nd(backpointer, tf.concat(axis=1, values=[tf.expand_dims(tf.range(0, tf.shape(last_label)[0]), 1),
                                                             last_label]))
         new_label = tf.reshape(new_label, [-1, 1])
         return new_label, new_label
@@ -394,6 +394,6 @@ def viterbi_decode(score, seq_len, transition_params):
 
     rev_labels = tf.squeeze(rev_labels, [2])
 
-    labels = tf.concat(1, [tf.reverse_sequence(rev_labels, seq_len, 1), last_label])
+    labels = tf.concat(axis=1, values=[tf.reverse_sequence(rev_labels, seq_len, 1), last_label])
 
     return labels

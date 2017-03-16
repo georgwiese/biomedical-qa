@@ -42,8 +42,8 @@ class ParamAssociativeMemory(RNNCell):
 
             with tf.variable_scope("address"):
                 lru_scores = prev_state[1]
-                lru_gamma, beta = tf.split(1, 2,
-                                           tf.contrib.layers.fully_connected(inputs, 2,
+                lru_gamma, beta = tf.split(axis=1, num_or_size_splits=2,
+                                           value=tf.contrib.layers.fully_connected(inputs, 2,
                                                               activation_fn=None,
                                                               weights_initializer=None,
                                                               scope="gamma_beta"))
@@ -61,7 +61,7 @@ class ParamAssociativeMemory(RNNCell):
                 weights_exp = tf.expand_dims(weights, 2)
 
             with tf.variable_scope("read"):
-                read = tf.reduce_sum(state * weights_exp, reduction_indices=[1])
+                read = tf.reduce_sum(state * weights_exp, axis=[1])
 
             with tf.variable_scope("write"):
                 to_write = tf.contrib.layers.fully_connected(inputs, self._size,
@@ -72,7 +72,7 @@ class ParamAssociativeMemory(RNNCell):
                 to_write_tiled = tf.tile(to_write_exp, [1, self._num_slots, 1])
 
                 # [B, 1]
-                e = tf.contrib.layers.fully_connected(tf.concat(1, [inputs, read]), 1,
+                e = tf.contrib.layers.fully_connected(tf.concat(axis=1, values=[inputs, read]), 1,
                                                       activation_fn=tf.sigmoid,
                                                       weights_initializer=None,
                                                       scope="erase")
@@ -82,7 +82,7 @@ class ParamAssociativeMemory(RNNCell):
                 new_state = tf.reshape(weights_exp * to_write_tiled + (1-weights_exp * e) * state,
                                        [-1, self._num_slots * self._size])
 
-            return tf.concat(1, [new_state, weights]), (new_state, new_lru_scores)
+            return tf.concat(axis=1, values=[new_state, weights]), (new_state, new_lru_scores)
 
 
 class MultiConcatRNNCell(RNNCell):
@@ -145,8 +145,8 @@ class MultiConcatRNNCell(RNNCell):
                     new_states.append(new_state)
                     outs.append(cur_inp)
         new_states = (tuple(new_states) if self._state_is_tuple
-                      else tf.concat(1, new_states))
-        return tf.concat(1, outs), new_states
+                      else tf.concat(axis=1, values=new_states))
+        return tf.concat(axis=1, values=outs), new_states
 
 
 class MultiMemoryRNN(RNNCell):
@@ -168,10 +168,10 @@ class MultiMemoryRNN(RNNCell):
             cell_output, _ = self._cell(inputs, cell_state)
 
             # read from memories
-            mem_input = tf.concat(1, [cell_output, inputs])
+            mem_input = tf.concat(axis=1, values=[cell_output, inputs])
             mem_out_states = [m(mem_input, s, "memory"+str(i)) for i, m, s in zip(range(len(self._rnn_memories)), self._rnn_memories, mem_states)]
             # [B, N+1, S]
-            output= tf.concat(1, [tf.expand_dims(m[0], 1) for m in mem_out_states]+ [tf.expand_dims(cell_output, 1)])
+            output= tf.concat(axis=1, values=[tf.expand_dims(m[0], 1) for m in mem_out_states]+ [tf.expand_dims(cell_output, 1)])
             # [B, N+1]
             gates = tf.contrib.layers.fully_connected(tf.reshape(output, [-1,
                                                                           (len(self._rnn_memories)+1) * self._size]),
@@ -185,11 +185,11 @@ class MultiMemoryRNN(RNNCell):
             #new_input = tf.contrib.layers.fully_connected(read, self._size, activation_fn=tf.tanh, weights_initializer=None)
 
             new_mem_states = [out_state[1] for out_state in mem_out_states]
-            new_mem_states = tf.concat(1, [cell_output] + new_mem_states)
+            new_mem_states = tf.concat(axis=1, values=[cell_output] + new_mem_states)
             return output, new_mem_states #tf.concat(1, [output, new_mem_states])
 
     def zero_state(self, batch_size, dtype):
-        return tf.concat(1, [self._cell.zero_state(batch_size, dtype)] +
+        return tf.concat(axis=1, values=[self._cell.zero_state(batch_size, dtype)] +
                          [m.zero_state(batch_size, dtype) for m in self._rnn_memories])
 
     @property
@@ -244,11 +244,11 @@ class ParamNTM(RNNCell):
             memory = tf.reshape(memory, [-1, self._num_slots, self._size])
 
             if not self._weights_given:
-                conc_input = tf.concat(1, [inputs, prev_ctr_out])
+                conc_input = tf.concat(axis=1, values=[inputs, prev_ctr_out])
 
                 with tf.variable_scope("address"):
-                    lru_gamma, beta = tf.split(1, 2,
-                                               tf.contrib.layers.fully_connected(conc_input, 2,
+                    lru_gamma, beta = tf.split(axis=1, num_or_size_splits=2,
+                                               value=tf.contrib.layers.fully_connected(conc_input, 2,
                                                                   activation_fn=None,
                                                                   weights_initializer=None,
                                                                   scope="gamma_beta"))
@@ -269,12 +269,12 @@ class ParamNTM(RNNCell):
             weights_exp = tf.expand_dims(weights, 2)
 
             with tf.variable_scope("read"):
-                read = tf.reduce_sum(memory * weights_exp, reduction_indices=[1])
+                read = tf.reduce_sum(memory * weights_exp, axis=[1])
 
-            new_out, ctr_state = self._ctr_cell(tf.concat(1, [read, inputs]), prev_ctr_state)
+            new_out, ctr_state = self._ctr_cell(tf.concat(axis=1, values=[read, inputs]), prev_ctr_state)
 
             with tf.variable_scope("write"):
-                to_write = tf.contrib.layers.fully_connected(tf.concat(1, [inputs, new_out]),
+                to_write = tf.contrib.layers.fully_connected(tf.concat(axis=1, values=[inputs, new_out]),
                                                              self._size, activation_fn=None,
                                                              weights_initializer=None,
                                                              scope="to_write")
@@ -282,7 +282,7 @@ class ParamNTM(RNNCell):
                 to_write_tiled = tf.tile(to_write_exp, [1, self._num_slots, 1])
 
                 # [B, 1]
-                e = tf.contrib.layers.fully_connected(tf.concat(1, [to_write, read]), 1,
+                e = tf.contrib.layers.fully_connected(tf.concat(axis=1, values=[to_write, read]), 1,
                                                       activation_fn=tf.sigmoid,
                                                       weights_initializer=None,
                                                       scope="erase")
@@ -292,9 +292,9 @@ class ParamNTM(RNNCell):
                 new_memory = tf.reshape(weights_exp * to_write_tiled + (1-weights_exp * e) * memory,
                                        [-1, self._num_slots * self._size])
             if not self._weights_given:
-                return tf.concat(1, [new_out, new_memory, weights]), (ctr_state, new_memory, new_out, new_lru_scores)
+                return tf.concat(axis=1, values=[new_out, new_memory, weights]), (ctr_state, new_memory, new_out, new_lru_scores)
             else:
-                return tf.concat(1, [new_out, new_memory]), (ctr_state, new_memory)
+                return tf.concat(axis=1, values=[new_out, new_memory]), (ctr_state, new_memory)
 
 
 class BackwardNTM(RNNCell):
@@ -322,20 +322,20 @@ class BackwardNTM(RNNCell):
             next_states = prev_state
 
             current_state = inputs
-            current_states = tf.split(1, self._num_slots + 1, current_state)
+            current_states = tf.split(axis=1, num_or_size_splits=self._num_slots + 1, value=current_state)
 
             # interpolate between current next_states and nex_state
             ctr_out = current_states[0]
 
             s = [ctr_out]
             for s_c, s_n in zip(current_states[1:], next_states):
-                g = tf.contrib.layers.fully_connected(tf.concat(1, [s_c, s_n, ctr_out]),
+                g = tf.contrib.layers.fully_connected(tf.concat(axis=1, values=[s_c, s_n, ctr_out]),
                                                       self._size,
                                                       activation_fn=tf.sigmoid,
                                                       weights_initializer=None)
                 s.append(g * s_c + (1 - g) * s_n)
 
-            return tf.concat(1, s), s[1:]
+            return tf.concat(axis=1, values=s), s[1:]
 
 
 class DynamicPointerRNN(RNNCell):
@@ -367,13 +367,13 @@ class DynamicPointerRNN(RNNCell):
 
             with tf.variable_scope("start"):
                 next_start_scores = _highway_maxout_network(
-                    self._num_layers, self._pool_size, tf.concat(1, [u, ctr_out]),
+                    self._num_layers, self._pool_size, tf.concat(axis=1, values=[u, ctr_out]),
                     self._input_states, self._lengths, self._max_length_32,
                     self._size)
 
             with tf.variable_scope("end"):
                 next_end_scores = _highway_maxout_network(
-                    self._num_layers, self._pool_size, tf.concat(1, [u, ctr_out]),
+                    self._num_layers, self._pool_size, tf.concat(axis=1, values=[u, ctr_out]),
                     self._input_states, self._lengths, self._max_length_32,
                     self._size)
 
@@ -383,10 +383,10 @@ class DynamicPointerRNN(RNNCell):
 def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_length, size):
     r = tf.contrib.layers.fully_connected(inputs, size, activation_fn=tf.tanh, weights_initializer=None, scope="r")
 
-    r_tiled = tf.tile(tf.expand_dims(r, 1), tf.pack([1, max_length, 1]))
+    r_tiled = tf.tile(tf.expand_dims(r, 1), tf.stack([1, max_length, 1]))
 
     ms = []
-    hm_inputs = tf.concat(2, [states, r_tiled])
+    hm_inputs = tf.concat(axis=2, values=[states, r_tiled])
     hm_inputs.set_shape([None, None, size + states.get_shape()[-1].value])
     for i in range(num_layers):
         m = tf.contrib.layers.fully_connected(hm_inputs,
@@ -395,7 +395,7 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
                                               weights_initializer=None,
                                               scope="m_%d" % i)
 
-        m = tf.reshape(m, tf.pack([-1, max_length, size, pool_size]))
+        m = tf.reshape(m, tf.stack([-1, max_length, size, pool_size]))
         m = tf.reduce_max(m, [3])
         hm_inputs = m
         ms.append(m)
@@ -406,7 +406,7 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
                                                 weights_initializer=None,
                                                 scope="out")
     else:
-        out = tf.contrib.layers.fully_connected(tf.concat(2, ms), pool_size,
+        out = tf.contrib.layers.fully_connected(tf.concat(axis=2, values=ms), pool_size,
                                                 activation_fn=None,
                                                 weights_initializer=None,
                                                 scope="out")
@@ -430,7 +430,7 @@ class GatedAggregationRNNCell(RNNCell):
 
     def __call__(self, inputs, state, scope=None):
         with tf.variable_scope(scope or type(self).__name__):
-            u = tf.contrib.layers.fully_connected(tf.concat(1, [inputs, state]),
+            u = tf.contrib.layers.fully_connected(tf.concat(axis=1, values=[inputs, state]),
                                                   self._size, activation_fn=tf.sigmoid,
                                                   biases_initializer=tf.constant_initializer(1.0),
                                                   weights_initializer=None, scope="update_gate")
@@ -449,7 +449,7 @@ class LayerNormGRUCell(GRUCell):
                                                                 biases_initializer=None,
                                                                 scope="from_input")
             concat_from_inp = tf.contrib.layers.layer_norm(concat_from_inp)
-            r_i, u_i, c_i = tf.split(1, 3, concat_from_inp)
+            r_i, u_i, c_i = tf.split(axis=1, num_or_size_splits=3, value=concat_from_inp)
 
             with tf.variable_scope("Gates"):
                 concat_from_h = tf.contrib.layers.fully_connected(state, 2 * self._num_units,
@@ -458,7 +458,7 @@ class LayerNormGRUCell(GRUCell):
                                                                   biases_initializer=None,
                                                                   scope="from_recurrent")
                 concat_from_h = tf.contrib.layers.layer_norm(concat_from_h)
-                r_h, u_h = tf.split(1, 2, concat_from_h)
+                r_h, u_h = tf.split(axis=1, num_or_size_splits=2, value=concat_from_h)
 
                 r, u = tf.sigmoid(r_i + r_h), tf.sigmoid(u_i + u_h)
             with tf.variable_scope("Candidate"):
@@ -484,7 +484,7 @@ class LayerNormLSTMCell(BasicLSTMCell):
             if self._state_is_tuple:
                 c, h = state
             else:
-                c, h = tf.split(1, 2, state)
+                c, h = tf.split(axis=1, num_or_size_splits=2, value=state)
 
             concat_from_inp = tf.contrib.layers.fully_connected(inputs, 4 * self._num_units,
                                                                 activation_fn=None,
@@ -500,7 +500,7 @@ class LayerNormLSTMCell(BasicLSTMCell):
             concat = tf.contrib.layers.layer_norm(concat_from_inp, "layer_norm_inp") + tf.contrib.layers.layer_norm(concat_from_h, "layer_norm_h")
 
             # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-            i, j, f, o = tf.split(1, 4, concat)
+            i, j, f, o = tf.split(axis=1, num_or_size_splits=4, value=concat)
 
             new_c = (c * tf.sigmoid(f + self._forget_bias) + tf.sigmoid(i) *
                      self._activation(j))
@@ -509,5 +509,5 @@ class LayerNormLSTMCell(BasicLSTMCell):
             if self._state_is_tuple:
                 new_state = LSTMStateTuple(new_c, new_h)
             else:
-                new_state = tf.concat(1, [new_c, new_h])
+                new_state = tf.concat(axis=1, values=[new_c, new_h])
             return new_h, new_state

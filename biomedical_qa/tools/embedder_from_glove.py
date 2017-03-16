@@ -47,7 +47,7 @@ with open(FLAGS.embedding_file, "rb") as f:
 
 with tf.Session() as sess:
     embedder = ConstantWordEmbedder(embedding_size, vocab, 2, embeddings, name=FLAGS.name)
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     if not os.path.exists(FLAGS.out_dir):
         os.mkdir(FLAGS.out_dir)
     config = embedder.get_config()
