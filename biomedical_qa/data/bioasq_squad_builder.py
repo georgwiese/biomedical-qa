@@ -33,7 +33,7 @@ class BioAsqSquadBuilder(object):
 
 
     def __init__(self, bioasq_json, context_token_limit=-1,
-                 types=None, include_synonyms=False):
+                 types=None, include_synonyms=False, include_answer_spans=True):
         """
         Creates the BioAsqSquadBuilder.
         :param bioasq_json: The BioASQ JSON object.
@@ -45,6 +45,8 @@ class BioAsqSquadBuilder(object):
                 the answers (i.e., correct answers of the list question) and
                 inner list containing the synonyms. If False, the answers object
                 is a flat list and only one synonym is included.
+        :param include_answer_spans: Whether to include exact answers. If True,
+                questions that are not extractive are skipped.
         """
 
         self._bioasq_json = bioasq_json
@@ -55,6 +57,7 @@ class BioAsqSquadBuilder(object):
         self._tokenizer = RegexpTokenizer(r'\w+|[^\w\s]')
         self._context_token_limit = context_token_limit
         self._include_synonyms = include_synonyms
+        self._include_answer_spans = include_answer_spans
         self._paragraphs = None
         self._stats = {
             "contexts_truncated": 0,
@@ -144,12 +147,13 @@ class BioAsqSquadBuilder(object):
         if "exact_answer" in question:
 
             if question["type"] in ["factoid", "list"]:
-                answers = self.get_extractive_answers(question, context)
+                if self._include_answer_spans:
+                    answers = self.get_extractive_answers(question, context)
 
-                if answers is None:
-                    return None
+                    if answers is None:
+                        return None
 
-                paragraph["qas"][0]["answers"] = answers
+                    paragraph["qas"][0]["answers"] = answers
                 paragraph["qas"][0]["original_answers"] = question["exact_answer"]
 
             if question["type"] == "yesno":

@@ -1,9 +1,11 @@
 import logging
 import sys
+import itertools
 
 import numpy as np
 
 from biomedical_qa.data.bioasq_squad_builder import ensure_list_depth_2
+from biomedical_qa.inference.postprocessing import TopKPostprocessor, ProbabilityThresholdPostprocessor, DeduplicatePostprocessor, PreferredTermPostprocessor
 
 
 def element_wise_mean(list_of_tuples):
@@ -15,10 +17,16 @@ def element_wise_mean(list_of_tuples):
 class BioAsqEvaluator(object):
 
 
-    def __init__(self, sampler, inferrer):
+    def __init__(self, sampler, inferrer, terms_file=None):
 
         self.sampler = sampler
         self.inferrer = inferrer
+        self.postprocessor = DeduplicatePostprocessor()
+
+        if terms_file is not None:
+            self.postprocessor = self.postprocessor.chain(PreferredTermPostprocessor(terms_file)) \
+                                    .chain(DeduplicatePostprocessor())
+
         self.predictions = None
 
 
@@ -94,6 +102,15 @@ class BioAsqEvaluator(object):
     def evaluate_questions(self, verbosity_level=0, list_answer_count=None,
                            list_answer_prob_threshold=None):
 
+        use_list_prob_threshold = self.inferrer.models[0].start_output_unit == "sigmoid" and \
+                                  list_answer_prob_threshold is not None
+
+        factoid_postprocessor = self.postprocessor.chain(TopKPostprocessor(5))
+        list_postprocessor = self.postprocessor.chain(
+            ProbabilityThresholdPostprocessor(list_answer_prob_threshold, 1)
+            if use_list_prob_threshold
+            else TopKPostprocessor(list_answer_count))
+
         self.initialize_predictions_if_needed(verbosity_level)
 
         if self.inferrer.beam_size < 5:
@@ -130,7 +147,7 @@ class BioAsqEvaluator(object):
             if question_type == "factoid":
 
                 rank = self.evaluate_factoid_question(
-                    answers, correct_answers,
+                    factoid_postprocessor.process(answers), correct_answers,
                     verbosity_level=verbosity_level)
 
                 reciprocal_rank = 1 / rank if rank <= 5 else 0
@@ -140,8 +157,7 @@ class BioAsqEvaluator(object):
             if question_type == "list":
 
                 f1, precision, recall = self.evaluate_list_question(
-                    answers, correct_answers, list_answer_count,
-                    list_answer_prob_threshold,
+                    list_postprocessor.process(answers), correct_answers,
                     verbosity_level=verbosity_level)
 
                 list_performances[question.id] = (f1, precision, recall)
@@ -176,11 +192,12 @@ class BioAsqEvaluator(object):
     def evaluate_factoid_question(self, answers, correct_answers,
                                   verbosity_level=0):
 
+        answers = list(answers)
         rank = sys.maxsize
         for correct_answer in correct_answers[0]:
             # Compute rank
-            for k in range(min(len(answers), 5)):
-                if answers[k][0].lower() == correct_answer.lower():
+            for answer, k in zip(answers, itertools.count()):
+                if answer[0].lower() == correct_answer.lower():
                     rank = min(rank, k + 1)
 
 
@@ -193,29 +210,9 @@ class BioAsqEvaluator(object):
 
 
     def evaluate_list_question(self, answers, correct_answers,
-                               list_answer_count=None,
-                               list_answer_prob_threshold=None,
                                verbosity_level=0):
 
-        if self.inferrer.models[0].start_output_unit == "sigmoid" and \
-                list_answer_prob_threshold is not None:
-            # We get individual probabilities for each answer, can threshold.
-            filtered_answers = [(a, prob) for a, prob in answers
-                                if prob >= list_answer_prob_threshold]
-            answers = filtered_answers if len(filtered_answers) > 0 else answers[:1]
-        elif list_answer_count is not None:
-            # We can't apply an absolute threshold, so use a fixed count.
-            answers = answers[:list_answer_count]
-        else:
-            # We find the best possible cutoff
-            f1, precision, recall = None, None, None
-            for count in range(1, 20):
-                _f1, _precision, _recall = self.evaluate_list_question(
-                        answers, correct_answers, list_answer_count=count)
-                if f1 is None or _f1 > f1:
-                    f1, precision, recall = _f1, _precision, _recall
-            return f1, precision, recall
-
+        answers = list(answers)
         answer_correct = np.zeros([len(answers)], dtype=np.bool)
 
         for answer_option in correct_answers:

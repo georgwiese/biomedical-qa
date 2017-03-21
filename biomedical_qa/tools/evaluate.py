@@ -32,6 +32,8 @@ tf.app.flags.DEFINE_boolean("verbose", False, "If true, prints correct and given
 
 tf.app.flags.DEFINE_float("threshold_search_step", 0.01, "Step size to use for threshold search.")
 
+tf.app.flags.DEFINE_boolean("preferred_terms", False, "If true, uses preferred terms when available.")
+
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -65,7 +67,7 @@ def main():
                                 split_contexts_on_newline=FLAGS.split_contexts,
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
                                 include_synonyms=FLAGS.bioasq_include_synonyms,
-                                tagger=tagger)
+                                tagger=tagger, include_answer_spans=False)
 
 
         list_sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
@@ -75,7 +77,7 @@ def main():
                                      split_contexts_on_newline=FLAGS.split_contexts,
                                      context_token_limit=FLAGS.bioasq_context_token_limit,
                                      include_synonyms=FLAGS.bioasq_include_synonyms,
-                                     tagger=tagger)
+                                     tagger=tagger, include_answer_spans=False)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")
@@ -85,25 +87,27 @@ def main():
     list_answer_prob_threshold = FLAGS.list_answer_prob_threshold
     list_answer_count = FLAGS.list_answer_count
 
+    terms_file = FLAGS.terms_file if FLAGS.preferred_terms else None
+
     if FLAGS.find_optimal_threshold:
-        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        evaluator = BioAsqEvaluator(list_sampler, inferrer, terms_file)
         list_answer_prob_threshold, _ = evaluator.find_optimal_threshold(
             FLAGS.threshold_search_step, verbosity_level=2 if FLAGS.verbose else 1)
 
     if FLAGS.find_optimal_answer_count:
-        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        evaluator = BioAsqEvaluator(list_sampler, inferrer, terms_file)
         list_answer_count, _ = evaluator.find_optimal_answer_count(
             verbosity_level=2 if FLAGS.verbose else 1)
 
     if FLAGS.bioasq_evaluation:
         print("Running BioASQ Evaluation...")
-        evaluator = BioAsqEvaluator(sampler, inferrer)
+        evaluator = BioAsqEvaluator(sampler, inferrer, terms_file)
         evaluator.evaluate(verbosity_level=2 if FLAGS.verbose else 1,
                            list_answer_count=list_answer_count,
                            list_answer_prob_threshold=list_answer_prob_threshold)
 
     if FLAGS.find_perfect_cutoff:
-        evaluator = BioAsqEvaluator(list_sampler, inferrer)
+        evaluator = BioAsqEvaluator(list_sampler, inferrer, terms_file)
         evaluator.evaluate(verbosity_level=2 if FLAGS.verbose else 1)
 
 main()
