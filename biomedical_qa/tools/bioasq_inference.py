@@ -20,6 +20,8 @@ tf.app.flags.DEFINE_integer("beam_size", 5, "Beam size used for decoding.")
 
 tf.app.flags.DEFINE_float("list_answer_prob_threshold", 0.04, "Beam size used for decoding.")
 
+tf.app.flags.DEFINE_boolean("preferred_terms", False, "If true, uses preferred terms when available.")
+
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -42,7 +44,7 @@ def insert_answers(bioasq_json, answers):
     questions = []
 
     base_postprocessor = NullPostprocessor()
-    if FLAGS.terms_file is not None:
+    if FLAGS.preferred_terms:
         base_postprocessor = base_postprocessor.chain(PreferredTermPostprocessor(FLAGS.terms_file))
     base_postprocessor = base_postprocessor.chain(DeduplicatePostprocessor())
 
