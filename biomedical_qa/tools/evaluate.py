@@ -67,7 +67,7 @@ def main():
                                 split_contexts_on_newline=FLAGS.split_contexts,
                                 context_token_limit=FLAGS.bioasq_context_token_limit,
                                 include_synonyms=FLAGS.bioasq_include_synonyms,
-                                tagger=tagger)
+                                tagger=tagger, include_answer_spans=False)
 
 
         list_sampler = BioAsqSampler(data_dir, [data_filename], FLAGS.batch_size,
@@ -77,7 +77,7 @@ def main():
                                      split_contexts_on_newline=FLAGS.split_contexts,
                                      context_token_limit=FLAGS.bioasq_context_token_limit,
                                      include_synonyms=FLAGS.bioasq_include_synonyms,
-                                     tagger=tagger)
+                                     tagger=tagger, include_answer_spans=False)
 
     if FLAGS.squad_evaluation:
         print("Running SQuAD Evaluation...")

@@ -30,7 +30,7 @@ def load_dataset(path):
     with open(path) as f:
         bioasq_json = json.load(f)
 
-    squad_json = BioAsqSquadBuilder(bioasq_json) \
+    squad_json = BioAsqSquadBuilder(bioasq_json, include_answer_spans=False) \
                     .build() \
                     .get_result_object()
 
