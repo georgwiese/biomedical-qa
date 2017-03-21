@@ -6,7 +6,7 @@ import tensorflow as tf
 from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
 from biomedical_qa.data.entity_tagger import get_entity_tagger
 from biomedical_qa.inference.inference import Inferrer, get_session, get_model
-from biomedical_qa.inference.postprocessing import NullPostprocessor, DeduplicatePostprocessor, ProbabilityThresholdPostprocessor, TopKPostprocessor, PreferredTermPreprocessor
+from biomedical_qa.inference.postprocessing import NullPostprocessor, DeduplicatePostprocessor, ProbabilityThresholdPostprocessor, TopKPostprocessor, PreferredTermPostprocessor
 from biomedical_qa.sampling.squad import SQuADSampler
 
 tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
@@ -43,7 +43,7 @@ def insert_answers(bioasq_json, answers):
 
     base_postprocessor = NullPostprocessor()
     if FLAGS.terms_file is not None:
-        base_postprocessor = base_postprocessor.chain(PreferredTermPreprocessor(FLAGS.terms_file))
+        base_postprocessor = base_postprocessor.chain(PreferredTermPostprocessor(FLAGS.terms_file))
     base_postprocessor = base_postprocessor.chain(DeduplicatePostprocessor())
 
     factoid_postprocessor = base_postprocessor.chain(TopKPostprocessor(5))

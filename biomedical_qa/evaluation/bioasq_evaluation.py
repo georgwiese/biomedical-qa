@@ -192,6 +192,7 @@ class BioAsqEvaluator(object):
     def evaluate_factoid_question(self, answers, correct_answers,
                                   verbosity_level=0):
 
+        answers = list(answers)
         rank = sys.maxsize
         for correct_answer in correct_answers[0]:
             # Compute rank

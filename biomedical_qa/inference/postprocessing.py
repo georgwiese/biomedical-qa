@@ -130,7 +130,7 @@ class TopKPostprocessor(AbstractPostprocessor):
         return "TopKPostprocessor: " + str(self.k)
 
 
-class PreferredTermPreprocessor(AbstractPostprocessor):
+class PreferredTermPostprocessor(AbstractPostprocessor):
 
 
     def __init__(self, terms_file, case_sensitive=True):
