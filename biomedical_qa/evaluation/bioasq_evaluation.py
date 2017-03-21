@@ -5,7 +5,7 @@ import itertools
 import numpy as np
 
 from biomedical_qa.data.bioasq_squad_builder import ensure_list_depth_2
-from biomedical_qa.inference.postprocessing import TopKPostprocessor, ProbabilityThresholdPostprocessor, DeduplicatePostprocessor, PreferredTermPreprocessor
+from biomedical_qa.inference.postprocessing import TopKPostprocessor, ProbabilityThresholdPostprocessor, DeduplicatePostprocessor, PreferredTermPostprocessor
 
 
 def element_wise_mean(list_of_tuples):
@@ -24,7 +24,7 @@ class BioAsqEvaluator(object):
         self.postprocessor = DeduplicatePostprocessor()
 
         if terms_file is not None:
-            self.postprocessor = self.postprocessor.chain(PreferredTermPreprocessor(terms_file)) \
+            self.postprocessor = self.postprocessor.chain(PreferredTermPostprocessor(terms_file)) \
                                     .chain(DeduplicatePostprocessor())
 
         self.predictions = None
