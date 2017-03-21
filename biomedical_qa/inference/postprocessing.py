@@ -18,12 +18,23 @@ class AbstractPostprocessor(object):
         raise NotImplementedError("Subclass Responsibility")
 
 
+    @property
+    def name(self):
+
+        raise NotImplementedError("Subclass Responsibility")
+
+
 class ChainedPostprocessor(AbstractPostprocessor):
 
 
     def __init__(self, postprocessors):
 
         self._postprocessors = postprocessors
+
+
+    def chain(self, post_processor):
+
+        return ChainedPostprocessor(self._postprocessors + [post_processor])
 
 
     def process(self, answers_probs):
@@ -33,12 +44,24 @@ class ChainedPostprocessor(AbstractPostprocessor):
         return answers_probs
 
 
+    @property
+    def name(self):
+
+        return "ChainedPostprocessor: " + str([p.name for p in self._postprocessors])
+
+
 class NullPostprocessor(AbstractPostprocessor):
 
 
     def process(self, answers_probs):
 
         return answers_probs
+
+
+    @property
+    def name(self):
+
+        return "NullPostprocessor"
 
 
 class DeduplicatePostprocessor(AbstractPostprocessor):
@@ -55,6 +78,12 @@ class DeduplicatePostprocessor(AbstractPostprocessor):
                 yield (answer_string, prob)
 
 
+    @property
+    def name(self):
+
+        return "DeduplicatePostprocessor"
+
+
 class ProbabilityThresholdPostprocessor(AbstractPostprocessor):
 
 
@@ -69,6 +98,12 @@ class ProbabilityThresholdPostprocessor(AbstractPostprocessor):
         for (answer_string, prob), i in zip(answers_probs, itertools.count()):
             if i < self.min_count or prob > self.prob_threshold:
                 yield (answer_string, prob)
+
+
+    @property
+    def name(self):
+
+        return "ProbabilityThresholdPostprocessor: " + str((self.prob_threshold, self.min_count))
 
 
 class TopKPostprocessor(AbstractPostprocessor):
@@ -89,11 +124,18 @@ class TopKPostprocessor(AbstractPostprocessor):
             yield (answer_string, prob)
 
 
+    @property
+    def name(self):
+
+        return "TopKPostprocessor: " + str(self.k)
+
+
 class PreferredTermPreprocessor(AbstractPostprocessor):
 
 
     def __init__(self, terms_file, case_sensitive=True):
 
+        self.terms_file = terms_file
         self.case_sensitive = case_sensitive
         self.term2preferred = build_term2preferred(terms_file, case_sensitive)
 
@@ -109,3 +151,9 @@ class PreferredTermPreprocessor(AbstractPostprocessor):
                 answer_string = self.term2preferred[answer_string]
 
             yield (answer_string, prob)
+
+
+    @property
+    def name(self):
+
+        return "PreferredTermPreprocessor: " + str((self.terms_file, self.case_sensitive))

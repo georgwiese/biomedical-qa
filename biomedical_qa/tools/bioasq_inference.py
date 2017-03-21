@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     contexts = {p["qas"][0]["id"] : p["context_original_capitalization"]
                 for p in squad_json["data"][0]["paragraphs"]}
-    answers = inferrer.get_predictions(sampler).items()
+    answers = inferrer.get_predictions(sampler)
     bioasq_json = insert_answers(bioasq_json, answers)
 
     os.makedirs(os.path.dirname(FLAGS.out_file), exist_ok=True)
