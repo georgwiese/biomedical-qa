@@ -40,7 +40,7 @@ class QAModel(ConfigurableModel):
 
     def _embed(self, input, length, e):
         max_length = tf.cast(tf.reduce_max(length), tf.int32)
-        input = tf.slice(input, [0, 0], tf.pack([-1, max_length]))
+        input = tf.slice(input, [0, 0], tf.stack([-1, max_length]))
         embedded = tf.nn.embedding_lookup(e, input)
         embedded = tf.nn.dropout(embedded, self.keep_prob)
         return embedded, input

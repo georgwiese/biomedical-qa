@@ -67,7 +67,7 @@ print("Final embeddings shape:", embeddings.shape)
 with tf.Session() as sess:
     embedder = ConstantWordEmbedder(embeddings.shape[1], vocab, 2, embeddings,
                                     name=FLAGS.name)
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     if not os.path.exists(FLAGS.out_dir):
         os.mkdir(FLAGS.out_dir)
     config = embedder.get_config()

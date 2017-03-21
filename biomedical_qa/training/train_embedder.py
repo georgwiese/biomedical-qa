@@ -117,7 +117,7 @@ with tf.Session(config=config) as sess:
     epoch = 0
 
     print("Initializing variables ...")
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     if FLAGS.embedder_path is not None:
         pretrained_embedder.model_saver.restore(sess, FLAGS.embedder_path)
 

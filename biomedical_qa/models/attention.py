@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.python.ops.rnn_cell import RNNCell
+from tensorflow.contrib.rnn import RNNCell
 
 from biomedical_qa import tfutil
 
@@ -9,22 +9,22 @@ def bilinear_attention(att_states, att_lengths, queries, query_lengths, size, ba
                                                              activation_fn=None,
                                                              weights_initializer=None)
     # [B, Q, L] --  Q is length of query
-    attention_scores = tf.batch_matmul(queries, attention_key, adj_y=True)
+    attention_scores = tf.matmul(queries, attention_key, adjoint_b=True)
     max_length = tf.cast(tf.reduce_max(query_lengths), tf.int32)
     max_query_length = tf.cast(tf.reduce_max(att_lengths), tf.int32)
     mask = tfutil.mask_for_lengths(att_lengths, batch_size, max_length=max_query_length)
-    mask = tf.tile(tf.expand_dims(mask, 1), tf.pack([1, max_length, 1]))
+    mask = tf.tile(tf.expand_dims(mask, 1), tf.stack([1, max_length, 1]))
     attention_scores = attention_scores + mask
-    attention_scores_reshaped = tf.reshape(attention_scores, tf.pack([-1, max_query_length]))
+    attention_scores_reshaped = tf.reshape(attention_scores, tf.stack([-1, max_query_length]))
     attention_weights = tf.reshape(tf.nn.softmax(attention_scores_reshaped), tf.shape(attention_scores))
     # [B, Q, L] x [B, L, S] --> [B, L, S]
-    ctxt_aligned_att_states = tf.batch_matmul(attention_weights, att_states)
+    ctxt_aligned_att_states = tf.matmul(attention_weights, att_states)
     return ctxt_aligned_att_states
 
 
 def dot_co_attention(states1, lengths1, states2, lengths2, batch_size=None):
     # [B, L1, L2]
-    attention_scores = tf.batch_matmul(states1, states2, adj_y=True)
+    attention_scores = tf.matmul(states1, states2, adjoint_b=True)
     return extract_co_attention_states(attention_scores, states1, lengths1, states2, lengths2, batch_size)
 
 
@@ -35,12 +35,12 @@ def extract_co_attention_states(affinity_scores, states1, lengths1, states2, len
     # [B, L1]
     mask1 = tfutil.mask_for_lengths(lengths1, batch_size, max_length=max_length1)
     # [B, L2, L1]
-    mask1 = tf.tile(tf.expand_dims(mask1, 1), tf.pack([1, max_length2, 1]))
+    mask1 = tf.tile(tf.expand_dims(mask1, 1), tf.stack([1, max_length2, 1]))
 
     # [B, L2]
     mask2 = tfutil.mask_for_lengths(lengths2, batch_size, max_length=max_length2)
     # [B, L1, L2]
-    mask2 = tf.tile(tf.expand_dims(mask2, 1), tf.pack([1, max_length1, 1]))
+    mask2 = tf.tile(tf.expand_dims(mask2, 1), tf.stack([1, max_length1, 1]))
     # [B, L1, L2]
     attention_scores1 = affinity_scores + mask2
     # [B, L2, L1]
@@ -52,16 +52,16 @@ def extract_co_attention_states(affinity_scores, states1, lengths1, states2, len
     attention_weights2 = _my_softmax(attention_scores2)
 
     # [B, L2, L1] x [B, L1, S] --> [B, L2, S]
-    att_states2 = tf.batch_matmul(attention_weights2, states1)
+    att_states2 = tf.matmul(attention_weights2, states1)
 
     # [B, L2, 2*S]
-    new_states2 = tf.concat(2, [att_states2, states2])
+    new_states2 = tf.concat(axis=2, values=[att_states2, states2])
 
     # [B, L1, 2*S]
-    att_states1 = tf.batch_matmul(attention_weights1, new_states2)
+    att_states1 = tf.matmul(attention_weights1, new_states2)
 
     # [B, L1, 3*S]
-    new_states1 = tf.concat(2, [att_states1, states1])
+    new_states1 = tf.concat(axis=2, values=[att_states1, states1])
 
     return new_states1
 
@@ -101,12 +101,12 @@ def attention(att_states, att_lengths, queries, query_lengths, size, batch_size=
     max_length = tf.cast(tf.reduce_max(query_lengths), tf.int32)
     max_question_length = tf.cast(tf.reduce_max(att_lengths), tf.int32)
     mask = tfutil.mask_for_lengths(att_lengths, batch_size, max_length=max_question_length)
-    mask = tf.tile(tf.expand_dims(mask, 1), tf.pack([1, max_length, 1]))
+    mask = tf.tile(tf.expand_dims(mask, 1), tf.stack([1, max_length, 1]))
     attention_scores = attention_scores + mask
-    attention_scores_reshaped = tf.reshape(attention_scores, tf.pack([-1, max_question_length]))
+    attention_scores_reshaped = tf.reshape(attention_scores, tf.stack([-1, max_question_length]))
     attention_weights = tf.reshape(tf.nn.softmax(attention_scores_reshaped), tf.shape(attention_scores))
     # [B, L, Q] x [B, Q, S] --> [B, L, S]
-    ctxt_aligned_att_states = tf.batch_matmul(attention_weights, att_states)
+    ctxt_aligned_att_states = tf.matmul(attention_weights, att_states)
     return ctxt_aligned_att_states
 
 
@@ -119,7 +119,7 @@ def conditional_attention(att_states, att_lengths, queries, query_lengths, ctr_c
             #tf.get_variable_scope().reuse_variables()
             #ctxt_aligned_bw_att_states = tf.nn.dynamic_rnn(cell_bw, queries, query_lengths, dtype=tf.float32)[0]
             #ctxt_aligned_att_states = tf.concat(2, [ctxt_aligned_fw_att_states, ctxt_aligned_bw_att_states])
-            ctxt_aligned_att_states = tf.concat(2, tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, queries, query_lengths, dtype=tf.float32)[0])
+            ctxt_aligned_att_states = tf.concat(axis=2, values=tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, queries, query_lengths, dtype=tf.float32)[0])
         else:
             cell = ControllerWrapper(ctr_cell, BilinearAttentionCell(att_states, att_lengths, num_units=ctr_cell.output_size))
             ctxt_aligned_att_states = tf.nn.dynamic_rnn(cell, queries, query_lengths, dtype=tf.float32)[0]
@@ -163,14 +163,14 @@ class ControllerWrapper(RNNCell):
 
         if self._controller_first:
             prev_ctrld_out = tf.slice(prev_out, [0, self._controller_cell.output_size], [-1, -1])
-            ctr_out, ctr_state = self._controller_cell(tf.concat(1, [inputs, prev_ctrld_out]), prev_ctr_state,
+            ctr_out, ctr_state = self._controller_cell(tf.concat(axis=1, values=[inputs, prev_ctrld_out]), prev_ctr_state,
                                                        self._controller_scope)
-            out, crtld_state = self._cell(tf.concat(1, [ctr_out, inputs]), prev_crtld_state)
+            out, crtld_state = self._cell(tf.concat(axis=1, values=[ctr_out, inputs]), prev_crtld_state)
 
-            out = tf.concat(1, [ctr_out, out])
+            out = tf.concat(axis=1, values=[ctr_out, out])
         else:
-            ctrld_out, crtld_state = self._cell(tf.concat(1, [prev_out, inputs]), prev_crtld_state)
-            out, ctr_state = self._controller_cell(tf.concat(1, [inputs, ctrld_out]), prev_ctr_state, self._controller_scope)
+            ctrld_out, crtld_state = self._cell(tf.concat(axis=1, values=[prev_out, inputs]), prev_crtld_state)
+            out, ctr_state = self._controller_cell(tf.concat(axis=1, values=[inputs, ctrld_out]), prev_ctr_state, self._controller_scope)
 
         if self._cell.state_size > 0:
             return out, (ctr_state, crtld_state, out)
@@ -217,11 +217,11 @@ class NoInputControllerWrapper(RNNCell):
         ctrld_out, crtld_state = self._cell(prev_ctr_out, prev_crtld_state)
         if isinstance(prev_ctr_state, tuple):
             to_tile = tf.div(tf.shape(ctrld_out)[0], tf.shape(prev_ctr_state[0])[0])
-            prev_ctr_state = (tf.reshape(tf.tile(s, tf.pack([1, to_tile])),
+            prev_ctr_state = (tf.reshape(tf.tile(s, tf.stack([1, to_tile])),
                                         [-1, s.get_shape()[1].value]) for s in prev_ctr_state)
         else:
             to_tile = tf.div(tf.shape(ctrld_out)[0], tf.shape(prev_ctr_state[0]))
-            prev_ctr_state = tf.reshape(tf.tile(prev_ctr_state, tf.pack([1, to_tile])),
+            prev_ctr_state = tf.reshape(tf.tile(prev_ctr_state, tf.stack([1, to_tile])),
                                         [-1, prev_ctr_state.get_shape()[1].value])
         out, ctr_state = self._controller_cell(ctrld_out, prev_ctr_state)
 
@@ -307,7 +307,7 @@ class AttentionCell(RNNCell):
                     ds.append(d)
 
             if len(ds) > 1:
-                return tf.concat(1, ds), None
+                return tf.concat(axis=1, values=ds), None
             else:
                 return ds[0], None
 
@@ -371,7 +371,7 @@ class BilinearAttentionCell(RNNCell):
                     # [B, S]
                     query = inputs
                     # [B, L, 1]
-                    s = tf.batch_matmul(self._hidden_features[a], tf.expand_dims(query, 2))
+                    s = tf.matmul(self._hidden_features[a], tf.expand_dims(query, 2))
                     s = tf.squeeze(s, [2])
                     self.attention_scores[a].append(s)
                     # [B, L]
@@ -383,7 +383,7 @@ class BilinearAttentionCell(RNNCell):
                     ds.append(d)
 
             if len(ds) > 1:
-                return tf.concat(1, ds), None
+                return tf.concat(axis=1, values=ds), None
             else:
                 return ds[0], None
 
