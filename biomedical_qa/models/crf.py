@@ -45,7 +45,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
+from tensorflow.contrib.rnn import RNNCell
 from tensorflow.python.ops import variable_scope as vs
 
 __all__ = ["crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
@@ -261,7 +261,7 @@ def crf_binary_score(tag_indices, sequence_lengths, transition_params):
     return binary_scores
 
 
-class CrfForwardRnnCell(rnn_cell.RNNCell):
+class CrfForwardRnnCell(RNNCell):
     """Computes the alpha values in a linear-chain CRF.
     See http://www.cs.columbia.edu/~mcollins/fb.pdf for reference.
     """
@@ -312,7 +312,7 @@ class CrfForwardRnnCell(rnn_cell.RNNCell):
         return new_alphas, new_alphas
 
 
-class CrfViterbiRnnCell(rnn_cell.RNNCell):
+class CrfViterbiRnnCell(RNNCell):
 
     def __init__(self, transition_params):
         """Initialize the CrfForwardRnnCell.
@@ -340,7 +340,7 @@ class CrfViterbiRnnCell(rnn_cell.RNNCell):
         return new_backpointer, new_trellis
 
 
-class CrfExtractBackpointerRnnCell(rnn_cell.RNNCell):
+class CrfExtractBackpointerRnnCell(RNNCell):
 
     def __init__(self, num_tags):
         self._num_tags = num_tags
@@ -361,7 +361,7 @@ class CrfExtractBackpointerRnnCell(rnn_cell.RNNCell):
         :return: newlabel
         """
         # extract backpointer for this label
-        new_label = tf.gather_nd(backpointer, tf.concat(1, [tf.expand_dims(tf.range(0, tf.shape(last_label)[0]), 1),
+        new_label = tf.gather_nd(backpointer, tf.concat(axis=1, values=[tf.expand_dims(tf.range(0, tf.shape(last_label)[0]), 1),
                                                             last_label]))
         new_label = tf.reshape(new_label, [-1, 1])
         return new_label, new_label
@@ -394,6 +394,6 @@ def viterbi_decode(score, seq_len, transition_params):
 
     rev_labels = tf.squeeze(rev_labels, [2])
 
-    labels = tf.concat(1, [tf.reverse_sequence(rev_labels, seq_len, 1), last_label])
+    labels = tf.concat(axis=1, values=[tf.reverse_sequence(rev_labels, seq_len, 1), last_label])
 
     return labels

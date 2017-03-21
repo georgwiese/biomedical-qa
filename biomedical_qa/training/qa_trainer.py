@@ -67,7 +67,7 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         # Set f1 to 0 if the predicted context index is not equal to the actual context index
         contexts_equal = tf.equal(context_indices, self.model.answer_context_indices)
-        f1_per_answer = tf.select(contexts_equal,
+        f1_per_answer = tf.where(contexts_equal,
                                   f1_per_answer,
                                   tf.zeros(tf.shape(f1_per_answer)))
 
@@ -84,15 +84,15 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         with tf.name_scope("summaries"):
             self._train_summaries += [
-                tf.scalar_summary("loss", self._loss),
-                tf.scalar_summary("start_loss", self.reduce_per_answer_loss(start_loss)),
-                tf.scalar_summary("end_loss", self.reduce_per_answer_loss(end_loss)),
+                tf.summary.scalar("loss", self._loss),
+                tf.summary.scalar("start_loss", self.reduce_per_answer_loss(start_loss)),
+                tf.summary.scalar("end_loss", self.reduce_per_answer_loss(end_loss)),
 
-                tf.scalar_summary("train_f1_mean", self.mean_f1),
-                tf.histogram_summary("train_f1", self.f1),
-                tf.scalar_summary("correct_starts",
+                tf.summary.scalar("train_f1_mean", self.mean_f1),
+                tf.summary.histogram("train_f1", self.f1),
+                tf.summary.scalar("correct_starts",
                                   tf.reduce_sum(tf.cast(starts_equal, tf.int32))),
-                tf.scalar_summary("correct_ends",
+                tf.summary.scalar("correct_ends",
                                   tf.reduce_sum(tf.cast(ends_equal, tf.int32))),
             ]
 
@@ -116,7 +116,7 @@ class ExtractionGoalDefiner(GoalDefiner):
 
     def sigmoid_start_loss(self, model):
 
-        correct_start_indices = tf.transpose(tf.pack([tf.cast(model.answer_context_indices, tf.int32),
+        correct_start_indices = tf.transpose(tf.stack([tf.cast(model.answer_context_indices, tf.int32),
                                                       self.answer_starts]))
         correct_start_values = tf.ones([tf.shape(self.answer_starts)[0]], dtype=tf.float32)
         is_start_correct = tf.scatter_nd(correct_start_indices,
@@ -133,9 +133,9 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         # Compute Cross Entropy Loss
         correct_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-                correct_start_scores, tf.ones(tf.shape(correct_start_scores)))
+                logits=correct_start_scores, labels=tf.ones(tf.shape(correct_start_scores)))
         incorrect_start_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-                incorrect_start_scores, tf.zeros(tf.shape(incorrect_start_scores)))
+                logits=incorrect_start_scores, labels=tf.zeros(tf.shape(incorrect_start_scores)))
 
         # Bring incorrect_start_loss into [Q] shape
         incorrect_start_loss = tf.segment_sum(tf.reduce_sum(incorrect_start_loss, axis=1),
@@ -145,8 +145,8 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         with tf.name_scope("summaries"):
             self._train_summaries += [
-                tf.scalar_summary("sigmoid_correct_start_loss", tf.reduce_mean(correct_start_loss)),
-                tf.scalar_summary("sigmoid_incorrect_start_loss", tf.reduce_mean(incorrect_start_loss))
+                tf.summary.scalar("sigmoid_correct_start_loss", tf.reduce_mean(correct_start_loss)),
+                tf.summary.scalar("sigmoid_incorrect_start_loss", tf.reduce_mean(incorrect_start_loss))
             ]
 
 
@@ -154,8 +154,8 @@ class ExtractionGoalDefiner(GoalDefiner):
 
     def end_loss(self, model):
 
-        return tf.nn.sparse_softmax_cross_entropy_with_logits(model.end_scores,
-                                                              self.answer_ends)
+        return tf.nn.sparse_softmax_cross_entropy_with_logits(logits=model.end_scores,
+                                                              labels=self.answer_ends)
 
     @property
     def loss(self):

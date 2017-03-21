@@ -229,6 +229,7 @@ class BeamSearchDecoder(object):
             partition = np.arange(len(values))
 
         num_partitions = partition[-1] + 1
+        num_values = min(self._beam_size, values.shape[1])
 
         rows = np.zeros([num_partitions, self._beam_size], dtype=np.int64)
         cols = np.zeros([num_partitions, self._beam_size], dtype=np.int64)
@@ -248,7 +249,7 @@ class BeamSearchDecoder(object):
                                     key=lambda v: -v[0])[:self._beam_size]
 
             # Unpack
-            top_values[p], rows[p], cols[p] = zip(*values_indices)
+            top_values[p][:num_values], rows[p][:num_values], cols[p][:num_values] = zip(*values_indices)
 
         return rows, cols, top_values
 

@@ -16,7 +16,7 @@ def get_by_index(tensor, index):
     :param index: [dim1] tensor of indices for dim2
     :return: [dim1 x dim3] tensor
     """
-    dim1, dim2, dim3 = tf.unpack(tf.shape(tensor))
+    dim1, dim2, dim3 = tf.unstack(tf.shape(tensor))
     flat_index = tf.range(0, dim1) * dim2 + (index - 1)
     return tf.gather(tf.reshape(tensor, [-1, dim3]), flat_index)
 
@@ -49,7 +49,7 @@ def mask_for_lengths(lengths, batch_size=None, max_length=None, mask_right=True,
     if batch_size is None:
         batch_size = tf.shape(lengths)[0]
     # [batch_size x max_length]
-    mask = tf.reshape(tf.tile(tf.range(0, max_length), [batch_size]), tf.pack([batch_size, -1]))
+    mask = tf.reshape(tf.tile(tf.range(0, max_length), [batch_size]), tf.stack([batch_size, -1]))
     if mask_right:
         mask = tf.greater_equal(tf.cast(mask, tf.int64), tf.expand_dims(lengths, 1))
     else:
@@ -60,7 +60,7 @@ def mask_for_lengths(lengths, batch_size=None, max_length=None, mask_right=True,
 
 def tfrun(tensor):
     with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         return sess.run(tensor)
 
 
@@ -192,7 +192,7 @@ def gather_rowwise_indices_1d(indices):
 
     # Compute [rows, 2] indices tensor of [row_index, col_index] entries
     row_index = tf.cast(tf.range(rows), tf.int64)
-    _indices = tf.transpose(tf.pack([row_index, indices]))
+    _indices = tf.transpose(tf.stack([row_index, indices]))
 
     return _indices
 
@@ -209,8 +209,8 @@ def gather_rowwise_indices_2d(indices):
 
     # Compute [rows, cols, 2] indices tensor of [row_index, col_index] entries
     row_index = tf.expand_dims(tf.range(rows), 1)
-    row_index_tiled = tf.tile(row_index, tf.pack([1, cols]))
-    _indices = tf.pack([row_index_tiled, indices])
+    row_index_tiled = tf.tile(row_index, tf.stack([1, cols]))
+    _indices = tf.stack([row_index_tiled, indices])
     _indices = tf.transpose(_indices, [1, 2, 0])
 
     return _indices

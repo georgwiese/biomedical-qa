@@ -197,9 +197,9 @@ with tf.Session(config=config) as sess:
     print("Created %s!" % type(model).__name__)
 
     print("Setting up summary writer...")
-    train_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/train',
+    train_summary_writer = tf.summary.FileWriter(FLAGS.save_dir + '/train',
                                                   sess.graph)
-    dev_summary_writer = tf.train.SummaryWriter(FLAGS.save_dir + '/dev',
+    dev_summary_writer = tf.summary.FileWriter(FLAGS.save_dir + '/dev',
                                                 sess.graph)
 
     print("Initializing variables ...")

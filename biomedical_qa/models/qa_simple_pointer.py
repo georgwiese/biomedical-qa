@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.rnn import GRUBlockCell, LSTMBlockCell, LSTMBlockFusedCell, FusedRNNCellAdaptor
 from tensorflow.python.ops.rnn import dynamic_rnn
-from tensorflow.python.ops.rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn import BasicRNNCell
 
 from biomedical_qa import tfutil
 from biomedical_qa.models.qa_model import ExtractionQAModel
@@ -69,8 +69,8 @@ class QASimplePointerModel(ExtractionQAModel):
                     # compute word wise features
                     #masked_question = self.question_embedder.output * mask
                     # [B, Q, L]
-                    q2c_scores = tf.batch_matmul(self._embedded_question_not_dropped * mask,
-                                                 self._embedded_context_not_dropped, adj_y=True)
+                    q2c_scores = tf.matmul(self._embedded_question_not_dropped * mask,
+                                                 self._embedded_context_not_dropped, adjoint_b=True)
                     q2c_scores = q2c_scores + tf.expand_dims(self.context_mask, 1)
                     #c2q_weights = tf.reduce_max(q2c_scores / (tf.reduce_max(q2c_scores, [2], keep_dims=True) + 1e-5), [1])
 
@@ -78,16 +78,16 @@ class QASimplePointerModel(ExtractionQAModel):
                                                 tf.expand_dims(question_binary_mask, 2), [1])
 
                     # [B, L , 1]
-                    self.context_features = tf.concat(2, [tf.expand_dims(self._word_in_question, 2),
+                    self.context_features = tf.concat(axis=2, values=[tf.expand_dims(self._word_in_question, 2),
                                                           #tf.expand_dims(c2q_weights, 2),
                                                           tf.expand_dims(q2c_weights,  2)])
 
-                    embedded_ctxt = tf.concat(2, [self.embedded_context, self.context_features])
+                    embedded_ctxt = tf.concat(axis=2, values=[self.embedded_context, self.context_features])
 
 
-                    in_question_feature = tf.ones(tf.pack([self.question_embedder.batch_size,
+                    in_question_feature = tf.ones(tf.stack([self.question_embedder.batch_size,
                                                            self.question_embedder.max_length, 2]))
-                    embedded_question = tf.concat(2, [self.embedded_question, in_question_feature])
+                    embedded_question = tf.concat(axis=2, values=[self.embedded_question, in_question_feature])
                 else:
                     embedded_ctxt = self.embedded_context
                     embedded_question = self.embedded_question
@@ -95,7 +95,7 @@ class QASimplePointerModel(ExtractionQAModel):
                 if self._with_question_type_features:
                     # Need to add another zero vector so that the total number
                     # of features is even, for LSTM performance reasons.
-                    question_type_features = tf.pack([self._is_factoid,
+                    question_type_features = tf.stack([self._is_factoid,
                                                       self._is_list,
                                                       self._is_yesno,
                                                       tf.zeros(tf.shape(self._is_list),
@@ -104,19 +104,19 @@ class QASimplePointerModel(ExtractionQAModel):
                     question_type_features = tf.cast(question_type_features, tf.float32)
                     question_type_features = tf.expand_dims(question_type_features, 1)
 
-                    embedded_question = tf.concat(2, [embedded_question,
+                    embedded_question = tf.concat(axis=2, values=[embedded_question,
                                                       tf.tile(question_type_features,
-                                                              tf.pack([1, tf.shape(embedded_question)[1], 1]))])
+                                                              tf.stack([1, tf.shape(embedded_question)[1], 1]))])
 
                     question_type_features = tf.gather(question_type_features, self.context_partition)
-                    embedded_ctxt = tf.concat(2, [embedded_ctxt,
+                    embedded_ctxt = tf.concat(axis=2, values=[embedded_ctxt,
                                                   tf.tile(question_type_features,
-                                                          tf.pack([1, tf.shape(embedded_ctxt)[1], 1]))])
+                                                          tf.stack([1, tf.shape(embedded_ctxt)[1], 1]))])
 
                 if self._with_entity_tag_features:
-                    embedded_question = tf.concat(2, [embedded_question,
+                    embedded_question = tf.concat(axis=2, values=[embedded_question,
                                                       tf.cast(self._question_tags, tf.float32)])
-                    embedded_ctxt = tf.concat(2, [embedded_ctxt,
+                    embedded_ctxt = tf.concat(axis=2, values=[embedded_ctxt,
                                                   tf.cast(self._context_tags, tf.float32)])
 
                 self.encoded_question = self._preprocessing_layer(rnn_constructor, embedded_question,
@@ -151,15 +151,15 @@ class QASimplePointerModel(ExtractionQAModel):
                         mask = tf.nn.relu(mask)
                         for i in range(1):
                             # [B, Q, L]
-                            inter_scores = tf.batch_matmul(self.encoded_question * mask, self.encoded_ctxt, adj_y=True)
+                            inter_scores = tf.matmul(self.encoded_question * mask, self.encoded_ctxt, adjoint_b=True)
                             inter_scores = inter_scores + tf.expand_dims(self.context_mask, 1)
 
                             inter_weights = tf.nn.softmax(inter_scores)
                             inter_weights = inter_weights * tf.expand_dims(question_binary_mask, 2)
                             # [B, L, Q] x [B, Q, S] -> [B, L, S]
-                            co_states = tf.batch_matmul(inter_weights, self.encoded_question, adj_x=True)
+                            co_states = tf.matmul(inter_weights, self.encoded_question, adj_x=True)
 
-                            u = tf.contrib.layers.fully_connected(tf.concat(2, [self.encoded_ctxt, co_states]), self.size,
+                            u = tf.contrib.layers.fully_connected(tf.concat(axis=2, values=[self.encoded_ctxt, co_states]), self.size,
                                                                   activation_fn=tf.sigmoid,
                                                                   biases_initializer=tf.constant_initializer(1.0),
                                                                   scope="update_gate")
@@ -202,7 +202,7 @@ class QASimplePointerModel(ExtractionQAModel):
                 vs.reuse_variables()
             encoded = tfutil.fused_birnn(fused_rnn, inputs, sequence_length=length, dtype=tf.float32, time_major=False,
                                          backward_device=self._device1)[0]
-            encoded = tf.concat(2, encoded)
+            encoded = tf.concat(axis=2, values=encoded)
 
         projected = tf.contrib.layers.fully_connected(encoded, self.size,
                                                       activation_fn=tf.tanh,
@@ -210,21 +210,21 @@ class QASimplePointerModel(ExtractionQAModel):
                                                       scope=projection_scope)
         if num_fusion_layers > 0:
             with tf.variable_scope("intra_fusion") as vs:
-                diag = tf.zeros(tf.unpack(tf.shape(inputs))[:2], dtype=tf.float32)
+                diag = tf.zeros(tf.unstack(tf.shape(inputs))[:2], dtype=tf.float32)
                 mask = tf.get_variable("attention_mask", [1, 1, self.size], initializer=tf.constant_initializer(1.0))
                 mask = tf.nn.relu(mask)
                 for i in range(num_fusion_layers):
                     if i > 1:
                         vs.reuse_variables()
                     # [B, L, L]
-                    intra_scores = tf.batch_matmul(mask * projected, projected, adj_y=True) \
+                    intra_scores = tf.matmul(mask * projected, projected, adjoint_b=True) \
                                    + tf.expand_dims(self.context_mask, 1)
                     intra_scores = tf.matrix_set_diag(intra_scores, diag)
                     intra_weights = tf.nn.softmax(intra_scores)
                     # [B, L, L] x [B, L, S] -> [B, L, S]
-                    co_states = tf.batch_matmul(intra_weights, projected)
+                    co_states = tf.matmul(intra_weights, projected)
 
-                    u = tf.contrib.layers.fully_connected(tf.concat(2, [projected, co_states]), self.size,
+                    u = tf.contrib.layers.fully_connected(tf.concat(axis=2, values=[projected, co_states]), self.size,
                                                           activation_fn=tf.sigmoid,
                                                           biases_initializer=tf.constant_initializer(1.0),
                                                           scope="update_gate")
@@ -246,7 +246,7 @@ class QASimplePointerModel(ExtractionQAModel):
         offsets = tf.cast(tf.range(0, self._batch_size), dtype=tf.int64) * (tf.reduce_max(self.context_length))
 
         #START
-        start_input = tf.concat(2, [tf.expand_dims(question_state, 1) * context_states,
+        start_input = tf.concat(axis=2, values=[tf.expand_dims(question_state, 1) * context_states,
                                     context_states])
 
         q_start_inter = tf.contrib.layers.fully_connected(question_state, self.size,
@@ -290,9 +290,9 @@ class QASimplePointerModel(ExtractionQAModel):
         u_s = tf.gather(context_states_flat, start_pointer + offsets)
 
         #END
-        end_input = tf.concat(2, [tf.expand_dims(u_s, 1) * context_states, start_input])
+        end_input = tf.concat(axis=2, values=[tf.expand_dims(u_s, 1) * context_states, start_input])
 
-        q_end_inter = tf.contrib.layers.fully_connected(tf.concat(1, [question_state, u_s]), self.size,
+        q_end_inter = tf.contrib.layers.fully_connected(tf.concat(axis=1, values=[question_state, u_s]), self.size,
                                                         activation_fn=None,
                                                         weights_initializer=None,
                                                         scope="q_end_inter")
@@ -343,7 +343,7 @@ class QASimplePointerModel(ExtractionQAModel):
 
             with tf.variable_scope("yesno_output_module"):
 
-                input = tf.concat(1, [self.question_representation, self.context_representation])
+                input = tf.concat(axis=1, values=[self.question_representation, self.context_representation])
                 input = tf.nn.dropout(input, self.keep_prob)
 
                 hidden = tf.contrib.layers.fully_connected(input, self.size,
@@ -437,10 +437,10 @@ class QASimplePointerModel(ExtractionQAModel):
 def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_length, size):
     r = tf.contrib.layers.fully_connected(inputs, size, activation_fn=tf.tanh, weights_initializer=None, scope="r")
 
-    r_tiled = tf.tile(tf.expand_dims(r, 1), tf.pack([1, max_length, 1]))
+    r_tiled = tf.tile(tf.expand_dims(r, 1), tf.stack([1, max_length, 1]))
 
     ms = []
-    hm_inputs = tf.concat(2, [states, r_tiled])
+    hm_inputs = tf.concat(axis=2, values=[states, r_tiled])
     hm_inputs.set_shape([None, None, size + states.get_shape()[-1].value])
     for i in range(num_layers):
         m = tf.contrib.layers.fully_connected(hm_inputs,
@@ -449,7 +449,7 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
                                               weights_initializer=None,
                                               scope="m_%d" % i)
 
-        m = tf.reshape(m, tf.pack([-1, max_length, size, pool_size]))
+        m = tf.reshape(m, tf.stack([-1, max_length, size, pool_size]))
         m = tf.reduce_max(m, [3])
         hm_inputs = m
         ms.append(m)
@@ -460,7 +460,7 @@ def _highway_maxout_network(num_layers, pool_size, inputs, states, lengths, max_
                                                 weights_initializer=None,
                                                 scope="out")
     else:
-        out = tf.contrib.layers.fully_connected(tf.concat(2, ms), pool_size,
+        out = tf.contrib.layers.fully_connected(tf.concat(axis=2, values=ms), pool_size,
                                                 activation_fn=None,
                                                 weights_initializer=None,
                                                 scope="out")
