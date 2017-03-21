@@ -46,18 +46,25 @@ with tf.Session(config=config) as sess:
     counter = 0
     while sampler.epoch == 0:
         batch = sampler.get_batch()
-        starts, ends = model.run(sess, [model.predicted_answer_starts, model.predicted_answer_ends], batch)
+        context_indices, starts, ends = model.run(sess,
+                                                  [model.predicted_context_indices,
+                                                   model.predicted_answer_starts,
+                                                   model.predicted_answer_ends],
+                                                  batch)
         for i, qa_setting in enumerate(batch):
+            context_index = context_indices[i]
             start = starts[i]
             end = ends[i]
 
-            char_start = sampler.char_offsets[qa_setting.id][start]
-            if end+1 >= len(sampler.char_offsets[qa_setting.id]):
-                char_end = -1
-            else:
-                char_end = sampler.char_offsets[qa_setting.id][end+1]
+            char_offsets = sampler.char_offsets[qa_setting.id]
+            context = question2real_context[qa_setting.id]
 
-            answer = question2real_context[qa_setting.id][char_start:char_end]
+            char_start = char_offsets[(context_index, start)]
+            char_end = char_offsets[(context_index, end + 1)] \
+                       if (context_index, end + 1) in char_offsets \
+                       else len(context)
+
+            answer = context[char_start:char_end]
             answer = answer.strip()
 
             results[qa_setting.id] = answer

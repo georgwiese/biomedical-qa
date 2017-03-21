@@ -96,13 +96,17 @@ def softmax(w):
 
 def find_correct_tokens(qa_setting):
     """Returns a boolean np array of length len(tokens) that states if the token is part of an answer."""
-    answers = qa_setting.answers
-    tokens = qa_setting.context
+    answers = [answer_option for answer in qa_setting.answers
+                             for answer_option in answer] 
+    tokens = [w for context in qa_setting.contexts
+                for w in context]
+    
     
     is_correct = np.zeros(len(tokens), dtype=np.bool)
     for i, start_token in enumerate(tokens):
         for answer in answers:
-            if start_token == answer[0] and len(tokens) - i >= len(answer):
+            if start_token == answer[0]: #and len(tokens) - i >= len(answer):
+                is_correct[i] = True
                 all_correct = True
                 for j in range(1, len(answer)):
                     all_correct &= tokens[i + j] == answer[j]
@@ -111,3 +115,22 @@ def find_correct_tokens(qa_setting):
                         is_correct[i + j] = True
     
     return is_correct
+
+def get_tokens(prediction, rev_vocab):
+    return [rev_vocab[w] for context in prediction.question.contexts
+                         for w in context]
+
+def print_prediction(prediction, rev_vocab, top_k=5, with_context=False, context_char_limit=500):
+    tokens = get_tokens(prediction, rev_vocab)
+
+    print("Id:")
+    print("  " + prediction.question.id)
+    print("Question:")
+    print("  " + prediction.question.question_json["question"])
+    print("Answers:")
+    print_list(maybe_flatten_list(prediction.question.question_json["original_answers"]))
+    print("Predicted Answers:")
+    print_list(zip(prediction.answer_strings[:top_k], prediction.answer_probs[:top_k]))
+    if with_context:
+        print(prediction.question.paragraph_json["context_original_capitalization"][:context_char_limit])
+    print()

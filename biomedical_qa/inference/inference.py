@@ -1,54 +1,79 @@
 import pickle
 import os
 import logging
-import sys
 
 import tensorflow as tf
 
-from biomedical_qa.sampling.squad import trfm
 from biomedical_qa.models import model_from_config
+from biomedical_qa.models.beam_search import BeamSearchDecoder
 
 
 class InferenceResult(object):
 
-    def __init__(self, starts, ends, probs, start_scores, end_scores,
-                 answer_strings, answer_probs, question):
+    def __init__(self, prediction, answer_strings, answer_probs, question):
 
-        self.starts = starts
-        self.ends = ends
-        self.probs = probs
-        self.start_scores = start_scores
-        self.end_scores = end_scores
+        self.prediction = prediction
         self.answer_strings = answer_strings
         self.answer_probs = answer_probs
         self.question = question
 
 
-class Inferrer(object):
+    def __iter__(self):
+
+        return zip(self.answer_strings, self.answer_probs)
 
 
-    def __init__(self, model_config_file, devices, beam_size,
-                 model_weights_file=None):
+def get_model(sess, model_config_file, devices, model_weights_file=None,
+              scope="model"):
 
-        print("Loading Model...")
+    with tf.variable_scope(scope):
+        print("Loading Model:", model_config_file)
         with open(model_config_file, 'rb') as f:
             model_config = pickle.load(f)
-        self.model = model_from_config(model_config, devices)
 
-        print("Restoring Weights...")
-        config = tf.ConfigProto(allow_soft_placement=True)
-        config.gpu_options.allow_growth = True
+        model = model_from_config(model_config, devices)
 
         if model_weights_file is None:
             train_dir = os.path.dirname(model_config_file)
             model_weights_file = tf.train.latest_checkpoint(train_dir)
             print("Using weights: %s" % model_weights_file)
 
-        self.sess = tf.Session(config=config)
-        self.sess.run(tf.global_variables_initializer())
-        self.model.model_saver.restore(self.sess, model_weights_file)
-        self.model.set_eval(self.sess)
-        self.model.set_beam_size(self.sess, beam_size)
+        print("Restoring Weights...")
+        # Remove scope prefix and ":0" suffix
+        save_variables = {v.name[len(scope) + 1:-2]: v for v in model.save_variables}
+        # print(tf.contrib.framework.checkpoint_utils.list_variables(model_weights_file))
+        saver = tf.train.Saver(save_variables)
+        saver.restore(sess, model_weights_file)
+
+    return model
+
+
+def get_session():
+    config = tf.ConfigProto(allow_soft_placement=True)
+    config.gpu_options.allow_growth = True
+    return tf.Session(config=config)
+
+
+class Inferrer(object):
+
+
+    def __init__(self, model_or_models, sess, beam_size):
+
+        if isinstance(model_or_models, list):
+            self.models = model_or_models
+        else:
+            self.models = [model_or_models]
+        self.sess = sess
+        self.beam_size = beam_size
+
+        # If true, each start has its own probability to allow for multiple starts
+        self.unnormalized_probs = self.models[0].start_output_unit == "sigmoid"
+
+        for model in self.models:
+            model.set_eval(self.sess)
+
+        self.beam_search_decoder = BeamSearchDecoder(self.sess, self.models,
+                                                     beam_size)
 
 
     def get_predictions(self, sampler):
@@ -62,46 +87,43 @@ class Inferrer(object):
 
             batch = sampler.get_batch()
 
-            starts, ends, probs, start_scores, end_scores = self.sess.run(
-                    [self.model.top_starts,
-                     self.model.top_ends,
-                     self.model.top_probs,
-                     self.model.start_scores,
-                     self.model.end_scores],
-                     self.model.get_feed_dict(batch))
+            network_predictions = self.beam_search_decoder.decode(batch)
 
             for i, question in enumerate(batch):
                 context = question.paragraph_json["context_original_capitalization"]
 
-                answers, answer_probs = self.extract_answers(context, starts[i],
-                                                             ends[i], probs[i])
+                answers, answer_probs = self.extract_answers(context, network_predictions[i],
+                                                             sampler.char_offsets[question.id])
                 predictions[question.id] = InferenceResult(
-                    starts[i], ends[i], probs[i], start_scores[i], end_scores[i],
-                    answers, answer_probs, question)
+                    network_predictions[i], answers, answer_probs, question)
 
         return predictions
 
 
-    def extract_answers(self, context, starts, ends, probs):
+    def extract_answers(self, context, prediction, all_char_offsets):
 
         answer2index = {}
         answers = []
         filtered_probs = []
 
-        assert len(starts) == len(ends)
-
-        for i in range(len(starts)):
-            answer = self.extract_answer(context, (starts[i], ends[i]))
+        for context_index, start, end, prob in prediction:
+            char_offsets = {token_index: char_offset
+                            for (c_index, token_index), char_offset in all_char_offsets.items()
+                            if c_index == context_index}
+            answer = self.extract_answer(context, (start, end), char_offsets)
 
             # Deduplicate
             if answer.lower() not in answer2index:
                 answer2index.update({answer.lower() : len(answers)})
                 answers.append(answer)
-                filtered_probs.append(probs[i])
+                filtered_probs.append(prob)
             else:
                 # Duplicate mentions should add their probs
                 index = answer2index[answer.lower()]
-                filtered_probs[index] += probs[i]
+                if self.unnormalized_probs:
+                    filtered_probs[index] = max(filtered_probs[index], prob)
+                else:
+                    filtered_probs[index] += prob
 
         # Sort by new probability
         answers_probs = list(zip(answers, filtered_probs))
@@ -110,10 +132,9 @@ class Inferrer(object):
         return zip(*answers_probs)
 
 
-    def extract_answer(self, context, answer_span):
+    def extract_answer(self, context, answer_span, char_offsets):
 
         token_start, token_end = answer_span
-        _, char_offsets = trfm(context)
 
         if token_start >= len(char_offsets):
             logging.warning("Null word selected! Using first token instead.")

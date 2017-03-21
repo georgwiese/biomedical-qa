@@ -4,32 +4,33 @@ from biomedical_qa.models.embedder import Embedder,WordEmbedder,CharWordEmbedder
     ConstantWordEmbedder
 from biomedical_qa.models.context_embedder import ContextEmbedder,RNNContextEmbedder,AttentionMemoryContextEmbedder
 
-""" Largest answer in wikireading
-A History of the Clan MacLean from Its First Settlement at Duard Castle, in the Isle of Mull, to the Present Period: Including a Genealogical Account of Some of the Principal Families Together with Their Heraldry, Legends, Superstitions, etc.
-"""
-wikireading_max_answer_length = 46 + 2 # including <S> and </S>
-wikireading_max_question_length = 10
 
 class QASetting:
-    def __init__(self, question, answers, context,
-                 answer_spans=None,
+    def __init__(self, question, answers, contexts,
+                 answers_spans=None,
                  answer_candidates=None,
                  answer_candidate_spans=None,
                  id=None,
                  q_type=None,
                  is_yes=None,
                  paragraph_json=None,
-                 question_json=None):
+                 question_json=None,
+                 question_tags=None,
+                 contexts_tags=None):
         """
         :param question: list of indices
-        :param answers:  list of list of indices
-        :param context: list of indices
+        :param answers:  list of list of list of indices:
+                         (answers -> alternatives -> token ids)
+        :param contexts: list of list indices
+        :param answer_spans: list of list of (context_index, start, end) tuples
+        :param question_tags: list of set<int>, one entry per token
+        :param contexts_tags: list of list of set<int>
         :return:
         """
         self.question = question
         self.answers = answers
-        self.context = context
-        self.answer_spans = answer_spans
+        self.contexts = contexts
+        self.answers_spans = answers_spans
         self.answer_candidates = answer_candidates
         self.answer_candidate_spans = answer_candidate_spans
         self.id = id
@@ -37,18 +38,16 @@ class QASetting:
         self.is_yes = is_yes
         self.paragraph_json = paragraph_json
         self.question_json = question_json
+        self.question_tags = question_tags
+        self.contexts_tags = contexts_tags
 
     def translate(self, vocab, unk_id):
         self.question = [vocab.get(w, unk_id) for w in self.question]
-        self.context = [vocab.get(w, unk_id) for w in self.context]
+        self.contexts = [[vocab.get(w, unk_id) for w in c] for c in self.contexts]
         self.answers = [[vocab.get(w, unk_id) for w in a] for a in self.answers]
 
-    @staticmethod
-    def from_dict(d):
-        return QASetting(d["question"], d["answers"], d["context"], d.get("answer_spans", None),
-                         d.get("answer_candidates", None), d.get("answer_candidate_spans", None))
-
 from biomedical_qa.models.qa_pointer import QAPointerModel
+from biomedical_qa.models.qa_simple_pointer import QASimplePointerModel
 
 
 def model_from_config(config, devices=None, dropout=0.0, inputs=None, seq_lengths=None, reuse=False):
@@ -69,5 +68,7 @@ def model_from_config(config, devices=None, dropout=0.0, inputs=None, seq_length
                                                    reuse=reuse)
     elif type == "pointer":
         return QAPointerModel.create_from_config(config, devices, dropout)
+    elif type == "simple_pointer":
+        return QASimplePointerModel.create_from_config(config, devices, dropout)
     else:
-        raise NotImplementedError("")
+        raise NotImplementedError("Unknown model type: %s" % type)
