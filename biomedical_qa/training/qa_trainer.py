@@ -31,7 +31,7 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         self.original_predictions = None
         self.original_weights = None
-        
+
         self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int32, shape=[None], name="answer_end")
 
@@ -144,11 +144,11 @@ class ExtractionGoalDefiner(GoalDefiner):
                                   tf.reduce_sum(tf.cast(starts_equal, tf.int32))),
                 tf.summary.scalar("correct_ends",
                                   tf.reduce_sum(tf.cast(ends_equal, tf.int32))),
-                tf.scalar_summary("start_forgetting_loss", start_forgetting_loss),
-                tf.scalar_summary("end_forgetting_loss", end_forgetting_loss),
-                tf.scalar_summary("forgetting_loss", forgetting_loss),
-                tf.scalar_summary("plain_loss", loss),
-                tf.scalar_summary("original_weight_loss", original_weights_loss),
+                tf.summary.scalar("start_forgetting_loss", start_forgetting_loss),
+                tf.summary.scalar("end_forgetting_loss", end_forgetting_loss),
+                tf.summary.scalar("forgetting_loss", forgetting_loss),
+                tf.summary.scalar("plain_loss", loss),
+                tf.summary.scalar("original_weight_loss", original_weights_loss),
             ]
 
 
