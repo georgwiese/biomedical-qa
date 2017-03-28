@@ -215,7 +215,7 @@ class ExtractionGoalDefiner(GoalDefiner):
         probs = tf.clip_by_value(probs, 1e-10, 1.0)
 
         log_probs = tf.log(probs)
-        losses = - tf.mul(targets, log_probs)
+        losses = - tf.multiply(targets, log_probs)
 
         return tf.reduce_mean(losses, axis=1)
 
