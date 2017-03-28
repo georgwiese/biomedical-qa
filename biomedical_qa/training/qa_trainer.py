@@ -66,7 +66,7 @@ class ExtractionGoalDefiner(GoalDefiner):
         elif model.start_output_unit == "sigmoid":
             start_loss = self.sigmoid_start_loss(model)
             start_forgetting_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-                self.model.start_scores, original_start_probs) \
+                logits=self.model.start_scores, labels=original_start_probs) \
                 if self.forgetting_loss_factor > 0.0 else 0.0
         else:
             raise ValueError("Unknown start output unit: %s" % model._start_output_unit)
