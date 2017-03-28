@@ -9,9 +9,9 @@ def transfer_with_adapter(dim, inputs, transfer, keep_prob, output_size, inputs_
                                                          weights_initializer=None,
                                                          scope="adapter")
     if isinstance(inputs, list):
-        concat = tf.concat(dim, [adapted_transfer] + inputs)
+        concat = tf.concat(axis=dim, values=[adapted_transfer] + inputs)
     else:
-        concat = tf.concat(dim, [adapted_transfer, inputs])
+        concat = tf.concat(axis=dim, values=[adapted_transfer, inputs])
 
     output = tf.contrib.layers.fully_connected(concat, output_size,
                                                activation_fn=activation_fn,
@@ -23,7 +23,7 @@ def transfer_with_adapter(dim, inputs, transfer, keep_prob, output_size, inputs_
 
 def gated_transfer(dim, inputs, transfer, keep_prob, output_size, inputs_size=None, activation_fn=None):
     if isinstance(inputs, list):
-        inputs = tf.concat(dim, inputs)
+        inputs = tf.concat(axis=dim, values=inputs)
 
     inputs_size = inputs.get_shape()[dim].value if inputs_size is None else inputs_size
     dropped_transfer = tf.nn.dropout(transfer, keep_prob)
@@ -43,7 +43,7 @@ def gated_transfer(dim, inputs, transfer, keep_prob, output_size, inputs_size=No
                                                             weights_initializer=None,
                                                             scope="transfer_projection")
 
-    gate = tf.contrib.layers.fully_connected(tf.concat(2, [input_projection, transfer_projection]), output_size,
+    gate = tf.contrib.layers.fully_connected(tf.concat(axis=2, values=[input_projection, transfer_projection]), output_size,
                                              activation_fn=tf.sigmoid,
                                              weights_initializer=None,
                                              scope="gate")

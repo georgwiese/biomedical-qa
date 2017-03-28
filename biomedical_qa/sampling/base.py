@@ -38,8 +38,12 @@ class BaseSampler:
         idxs = []
         offsets = []
         offset = 0
+        s_lower = s.lower()
+
+        # Unfortunately it's not always true that len(tokenize(s)) == len(tokenize(s.lower))
         for t in self.tokenizer.tokenize(s):
-            offset = s.index(t, offset)
+            t = t.lower()
+            offset = s_lower.index(t, offset)
             offsets.append(offset)
             i = self.vocab.get(t, self.unk_id)
             idxs.append(i)

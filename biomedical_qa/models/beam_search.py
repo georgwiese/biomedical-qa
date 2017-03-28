@@ -21,14 +21,102 @@ class BeamSearchDecoderResult(object):
         return zip(self.context_indices, self.starts, self.ends, self.probs)
 
 
+class ModelEnsemble(object):
+
+
+    def __init__(self, sess, models):
+
+        self._sess = sess
+        self._models = models
+        self._intermediate_results = {}
+
+        assert self._models[0].start_output_unit == "sigmoid"
+
+
+    def set_eval(self):
+
+        for model in self._models:
+            model.set_eval(self._sess)
+
+
+    def get_start_probs(self, qa_settings):
+
+        # Should be the same across models
+        context_partition = None
+
+        # Added across models
+        start_scores = None
+
+        for model in self._models:
+
+            context_partition, matched_output, question_representation, model_start_scores = \
+                self._sess.run([model.context_partition,
+                                model.matched_output,
+                                model.question_representation,
+                                model.start_scores], model.get_feed_dict(qa_settings))
+
+            self._intermediate_results[model] = {
+                model.matched_output: matched_output,
+                model.question_representation: question_representation,
+            }
+
+            if start_scores is None:
+                start_scores = model_start_scores
+            else:
+                start_scores += model_start_scores
+
+        # Average start scores
+        start_scores /= len(self._models)
+        start_probs = 1 / (1 + np.exp(-start_scores))
+
+        return context_partition, start_probs
+
+
+    def get_end_probs(self, qa_settings, predicted_starts, predicted_contexts):
+
+        end_scores = None
+
+        for model in self._models:
+
+            feed_dict = model.get_feed_dict(qa_settings)
+            feed_dict.update(self._intermediate_results[model])
+            feed_dict.update({
+                # TODO: Find out why I need to feed this:
+                model.correct_start_pointer: [],
+                # Starts
+                model.predicted_answer_starts: predicted_starts,
+                model.answer_context_indices: predicted_contexts,
+            })
+            [model_end_scores] = self._sess.run([model.end_scores], feed_dict)
+
+            if end_scores is None:
+                end_scores = model_end_scores
+            else:
+                end_scores += model_end_scores
+
+        # Average end scores
+        end_scores /= len(self._models)
+
+        # Compute softmax
+        end_scores -= end_scores.max(axis=1).reshape([-1, 1])
+        end_scores_exp = np.exp(end_scores)
+        end_probs = end_scores_exp / end_scores_exp.sum(axis=1).reshape([-1, 1])
+
+        return end_probs
+
+
+
 class BeamSearchDecoder(object):
     """From a QASetting batch, computes most likely (start, end) pairs via beam search."""
 
 
-    def __init__(self, sess, model, beam_size):
+    def __init__(self, sess, model_or_models, beam_size):
 
         self._sess = sess
-        self._model = model
+        if isinstance(model_or_models, list):
+            self._model_ensemble = ModelEnsemble(sess, model_or_models)
+        else:
+            self._model_ensemble = ModelEnsemble(sess, [model_or_models])
         self._beam_size = beam_size
 
 
@@ -39,17 +127,9 @@ class BeamSearchDecoder(object):
         :return: List of BeamSearchDecoderResult objects
         """
 
-        self._model.set_eval(self._sess)
+        self._model_ensemble.set_eval()
 
-        # Get start probs, context partition and all relevant intermediate results
-        # to predict end pointer later.
-        context_partition, matched_output, question_representation, start_probs = \
-            self._sess.run(
-                [self._model.context_partition,
-                 self._model.matched_output,
-                 self._model.question_representation,
-                 self._model.start_probs],
-                self._model.get_feed_dict(qa_settings))
+        context_partition, start_probs = self._model_ensemble.get_start_probs(qa_settings)
 
         num_questions = context_partition[-1] + 1
         assert num_questions == len(qa_settings)
@@ -63,18 +143,7 @@ class BeamSearchDecoder(object):
         predicted_contexts = batch_index_contexts.flatten()
 
         # Compute end probs by feeding all necessary itermediate results & start pointers
-        feed_dict = self._model.get_feed_dict(qa_settings)
-        feed_dict.update({
-            # TODO: Find out why I need to feed this:
-            self._model.correct_start_pointer: [],
-            # Starts
-            self._model.predicted_answer_starts: predicted_starts,
-            self._model.answer_context_indices: predicted_contexts,
-            # Intermediate Results (so no recomputation needed)
-            self._model.matched_output: matched_output,
-            self._model.question_representation: question_representation,
-        })
-        [end_probs] = self._sess.run([self._model.end_probs], feed_dict)
+        end_probs = self._model_ensemble.get_end_probs(qa_settings, predicted_starts, predicted_contexts)
 
         contexts, starts, ends, probs = self._compute_top_spans(
                 contexts, starts, top_start_probs, end_probs)
@@ -160,6 +229,7 @@ class BeamSearchDecoder(object):
             partition = np.arange(len(values))
 
         num_partitions = partition[-1] + 1
+        num_values = min(self._beam_size, values.shape[1])
 
         rows = np.zeros([num_partitions, self._beam_size], dtype=np.int64)
         cols = np.zeros([num_partitions, self._beam_size], dtype=np.int64)
@@ -179,7 +249,7 @@ class BeamSearchDecoder(object):
                                     key=lambda v: -v[0])[:self._beam_size]
 
             # Unpack
-            top_values[p], rows[p], cols[p] = zip(*values_indices)
+            top_values[p][:num_values], rows[p][:num_values], cols[p][:num_values] = zip(*values_indices)
 
         return rows, cols, top_values
 

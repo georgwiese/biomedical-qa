@@ -35,7 +35,7 @@ with tf.Session() as sess:
     print("Building Concat Embedder")
     embedder = ConcatEmbedder([embedder1, embedder2])
 
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     if not os.path.exists(FLAGS.out_dir):
         os.mkdir(FLAGS.out_dir)
     config = embedder.get_config()
