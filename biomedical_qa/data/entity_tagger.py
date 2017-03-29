@@ -4,7 +4,7 @@ import requests
 
 import tensorflow as tf
 
-from data.umls import build_term2types, build_concept2types
+from biomedical_qa.data.umls import build_term2types, build_concept2types
 
 
 # Entity tagger settings
