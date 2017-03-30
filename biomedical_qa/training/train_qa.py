@@ -29,6 +29,7 @@ tf.app.flags.DEFINE_string("task", "qa", "qa, multiple_choice, question_generati
 
 # BioASQ data loading
 tf.app.flags.DEFINE_boolean("is_bioasq", False, "Whether the provided dataset is a BioASQ json.")
+tf.app.flags.DEFINE_boolean("use_bioasq_goals", False, "Whether to optimize the BioASQ goals (assumed true if is_bioasq is true).")
 tf.app.flags.DEFINE_boolean("bioasq_include_synonyms", False, "Whether BioASQ synonyms should be included.")
 tf.app.flags.DEFINE_integer("bioasq_context_token_limit", -1, "Token limit for BioASQ contexts.")
 
@@ -185,7 +186,7 @@ with tf.Session(config=config) as sess:
 
     goal_definers = []
     if FLAGS.data is not None:
-        if FLAGS.is_bioasq:
+        if FLAGS.is_bioasq or FLAGS.use_bioasq_goals:
             goal_definers.append(BioAsqGoalDefiner(model, devices[0],
                                                    forgetting_loss_factor=FLAGS.forgetting_loss_factor,
                                                    original_weights_loss_factor=FLAGS.original_weights_loss_factor))
