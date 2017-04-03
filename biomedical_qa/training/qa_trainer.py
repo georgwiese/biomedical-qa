@@ -92,7 +92,7 @@ class ExtractionGoalDefiner(GoalDefiner):
             for variable in self.model.train_variables:
                 original_weights = self.original_weights_tensors[variable.name]
                 weight_diff = original_weights - variable
-                original_weights_loss += tf.reduce_sum(tf.square(weight_diff))
+                original_weights_loss += tf.reduce_sum(tf.abs(weight_diff))
 
             original_weights_loss *= self.original_weights_loss_factor
 
