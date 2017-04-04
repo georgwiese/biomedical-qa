@@ -5,7 +5,6 @@ import numpy as np
 from biomedical_qa import tfutil
 from biomedical_qa.evaluation.bioasq_evaluation import BioAsqEvaluator
 from biomedical_qa.inference.inference import Inferrer
-from biomedical_qa.models.crf import crf_log_likelihood
 from biomedical_qa.models.qa_model import ExtractionQAModel
 from biomedical_qa.training.trainer import GoalDefiner
 
@@ -14,17 +13,38 @@ SIGMOID_NEGATIVE_SAMPLES = -1
 
 class ExtractionGoalDefiner(GoalDefiner):
 
-    def __init__(self, model, device):
+
+    def __init__(self, model, device, forgetting_loss_factor=0.0,
+                 original_weights_loss_factor=0.0):
         assert isinstance(model, ExtractionQAModel), "ExtractionQATrainer can only work with ExtractionQAModel"
+        self.forgetting_loss_factor = forgetting_loss_factor
+        self.original_weights_loss_factor = original_weights_loss_factor
         GoalDefiner.__init__(self, model, device)
+
 
     @property
     def name(self):
         return "ExtractionGoalDefiner"
 
+
     def _init(self):
+
+        self.original_predictions = None
+        self.original_weights = None
+
         self.answer_starts = tf.placeholder(tf.int32, shape=[None], name="answer_start")
         self.answer_ends = tf.placeholder(tf.int32, shape=[None], name="answer_end")
+
+        self.original_start_probs = tf.placeholder(tf.float32, shape=[None, None], name="original_start_probs")
+        self.original_end_probs = tf.placeholder(tf.float32, shape=[None, None], name="original_end_probs")
+
+        original_start_probs = self.original_start_probs[:,:tf.shape(self.model.start_probs)[1]]
+        original_end_probs = self.original_end_probs[:,:tf.shape(self.model.end_probs)[1]]
+
+        self.original_weights_tensors = {v.name: tf.placeholder(v.dtype,
+                                                                shape=v.get_shape(),
+                                                                name=("original_weights__" + v.name.replace(":", "_")))
+                                         for v in self.model.train_variables}
 
         # Maps each answer alternative index to a question index
         self.question_partition = tf.placeholder(tf.int32, shape=[None], name="question_partition")
@@ -40,13 +60,43 @@ class ExtractionGoalDefiner(GoalDefiner):
 
         if model.start_output_unit == "softmax":
             start_loss = self.softmax_start_loss(model)
+            start_forgetting_loss = self.softmax_cross_entropy(
+                self.model.start_probs, original_start_probs) \
+                if self.forgetting_loss_factor > 0.0 else 0.0
         elif model.start_output_unit == "sigmoid":
             start_loss = self.sigmoid_start_loss(model)
+            start_forgetting_loss = tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=self.model.start_scores, labels=original_start_probs) \
+                if self.forgetting_loss_factor > 0.0 else 0.0
         else:
             raise ValueError("Unknown start output unit: %s" % model._start_output_unit)
 
         end_loss = self.end_loss(model)
-        self._loss = self.reduce_per_answer_loss(start_loss + end_loss)
+        end_forgetting_loss = self.softmax_cross_entropy(self.model.end_probs, original_end_probs) \
+                                if self.forgetting_loss_factor > 0.0 else 0.0
+
+        loss = self.reduce_per_answer_loss(start_loss + end_loss)
+
+        if self.forgetting_loss_factor > 0.0:
+            # Transform both losses to [Q] shape, then take mean
+            # Start loss is per context.
+            start_forgetting_loss = tf.reduce_mean(
+                    tf.segment_mean(start_forgetting_loss, self.model.context_partition))
+            # End loss is per answer option. Note this punishes contexts more that appear multiple times
+            end_forgetting_loss = tf.reduce_mean(
+                    tf.segment_mean(end_forgetting_loss, self.question_partition))
+        forgetting_loss = self.forgetting_loss_factor * (start_forgetting_loss + end_forgetting_loss)
+
+        original_weights_loss = 0.0
+        if self.original_weights_loss_factor:
+            for variable in self.model.train_variables:
+                original_weights = self.original_weights_tensors[variable.name]
+                weight_diff = original_weights - variable
+                original_weights_loss += tf.reduce_sum(tf.square(weight_diff))
+
+            original_weights_loss *= self.original_weights_loss_factor
+
+        self._loss = loss + forgetting_loss + original_weights_loss
 
         total = tf.cast(self.answer_ends - self.answer_starts + 1, tf.int32)
 
@@ -94,7 +144,63 @@ class ExtractionGoalDefiner(GoalDefiner):
                                   tf.reduce_sum(tf.cast(starts_equal, tf.int32))),
                 tf.summary.scalar("correct_ends",
                                   tf.reduce_sum(tf.cast(ends_equal, tf.int32))),
+                tf.summary.scalar("start_forgetting_loss", start_forgetting_loss),
+                tf.summary.scalar("end_forgetting_loss", end_forgetting_loss),
+                tf.summary.scalar("forgetting_loss", forgetting_loss),
+                tf.summary.scalar("plain_loss", loss),
+                tf.summary.scalar("original_weight_loss", original_weights_loss),
             ]
+
+
+    def initialize(self, sess, train_sampler, valid_sampler):
+
+        self.original_predictions = self.get_original_predictions(sess, train_sampler, valid_sampler) \
+                                    if self.forgetting_loss_factor > 0 else None
+        self.original_weights = self.get_original_weights(sess) \
+                                    if self.original_weights_loss_factor > 0 else None
+
+
+    def get_original_predictions(self, sess, train_sampler, valid_sampler):
+
+        print("Getting original predictions...")
+
+        original_predictions = {}
+
+        self.model.set_eval(sess)
+        batches = list(train_sampler.get_all_batches()) +\
+                    list(valid_sampler.get_all_batches())
+        for batch in batches:
+            start_probs, end_probs = sess.run(
+                [self.model.start_probs, self.model.end_probs],
+                self.get_feed_dict(batch)
+            )
+            context_index = 0
+            answer_index = 0
+            for question in batch:
+                n_contexts = len(question.contexts)
+                n_answers = sum([len(a) for a in question.answers_spans])
+                question_start_probs = start_probs[context_index:(context_index + n_contexts), :]
+                question_end_probs = end_probs[answer_index:(answer_index + n_answers), :]
+                context_index += n_contexts
+                answer_index += n_answers
+
+                assert len(question_start_probs) == n_contexts
+                assert len(question_end_probs) == n_answers
+
+                original_predictions[question.id] = (
+                    question_start_probs,
+                    question_end_probs,
+                )
+
+        return original_predictions
+
+
+    def get_original_weights(self, sess):
+
+        print("Getting original weights...")
+        weights = sess.run(self.model.train_variables)
+        return {v.name: w for v, w in zip(self.model.train_variables, weights)}
+
 
     def reduce_per_answer_loss(self, loss):
 
@@ -103,6 +209,15 @@ class ExtractionGoalDefiner(GoalDefiner):
         # Get all of the answers right
         loss = tf.segment_mean(loss, self.answer_question_partition)
         return tf.reduce_mean(loss)
+
+    def softmax_cross_entropy(self, probs, targets):
+        # Prevent NaN losses
+        probs = tf.clip_by_value(probs, 1e-10, 1.0)
+
+        log_probs = tf.log(probs)
+        losses = - tf.multiply(targets, log_probs)
+
+        return tf.reduce_mean(losses, axis=1)
 
     def softmax_start_loss(self, model):
 
@@ -200,11 +315,22 @@ class ExtractionGoalDefiner(GoalDefiner):
         question_partition = []
         answer_partition = []
 
+        original_start_probs = []
+        original_end_probs = []
+
         question_index = 0
         answer_index = 0
         filtered_qa_settings = list()
         start_context_index = 0
         for qa_setting in qa_settings:
+
+            if self.original_predictions is not None:
+                start_probs, end_probs = self.original_predictions[qa_setting.id]
+                assert len(start_probs) == len(qa_setting.contexts)
+                assert len(end_probs) == sum([len(a) for a in qa_setting.answers_spans])
+                original_start_probs.append(start_probs)
+                original_end_probs.append(end_probs)
+
             for answer_spans in qa_setting.answers_spans:
                 for span in answer_spans:
                     (context_index, start, end) = span
@@ -229,11 +355,25 @@ class ExtractionGoalDefiner(GoalDefiner):
         feed_dict[self.answer_ends] = answer_ends
         feed_dict[self.question_partition] = question_partition
         feed_dict[self.answer_partition] = answer_partition
-        # start weights are given when computing end-weights
-        #if not is_eval:
-        #    feed_dict[self.model.predicted_start_pointer] = answer_starts
+
+        if len(original_start_probs):
+            feed_dict[self.original_start_probs] = self.merge_array_slices(original_start_probs)
+            feed_dict[self.original_end_probs] = self.merge_array_slices(original_end_probs)
+
+        if self.original_weights is not None:
+            for variable_name, tensor in self.original_weights_tensors.items():
+                feed_dict[tensor] = self.original_weights[variable_name]
 
         return feed_dict
+
+
+    def merge_array_slices(self, slices):
+        # Merges a list of 2D arrays of varying size into a single matrix
+
+        width = max([s.shape[1] for s in slices])
+        padded_slices = [np.pad(s, [(0, 0), (0, width - s.shape[1])], "constant")
+                         for s in slices]
+        return np.concatenate(padded_slices)
 
 
 class BioAsqGoalDefiner(ExtractionGoalDefiner):
@@ -241,10 +381,13 @@ class BioAsqGoalDefiner(ExtractionGoalDefiner):
 
 
     def __init__(self, model, device,
-                 beam_size=10):
+                 beam_size=10, forgetting_loss_factor=0.0,
+                 original_weights_loss_factor=0.0):
 
         self._beam_size = beam_size
-        ExtractionGoalDefiner.__init__(self, model, device)
+        ExtractionGoalDefiner.__init__(self, model, device,
+                                       forgetting_loss_factor=forgetting_loss_factor,
+                                       original_weights_loss_factor=original_weights_loss_factor)
 
 
     def eval(self, sess, sampler, subsample=-1, after_batch_hook=None, verbose=False):

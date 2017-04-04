@@ -30,6 +30,9 @@ class GoalDefiner:
     def run(self, sess, goal, qa_settings):
         return sess.run(goal, feed_dict=self.get_feed_dict(qa_settings))
 
+    def initialize(self, sess, train_sampler, valid_sampler):
+        pass
+
 
 class Trainer(object):
     """Optimizes losses of GoalDefiners."""
@@ -79,6 +82,12 @@ class Trainer(object):
                 apply_gradients(zip(grads, train_variables),
                                 global_step=self.global_step)
 
+
+    def initialize(self, sess, train_samplers, valid_samplers):
+
+        for goal_definer, train_sampler, valid_sampler in zip(
+                self.goal_definers, train_samplers, valid_samplers):
+            goal_definer.initialize(sess, train_sampler, valid_sampler)
 
 
     def run_train_steps(self, sess, samplers, with_summaries):
