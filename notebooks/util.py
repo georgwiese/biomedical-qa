@@ -120,7 +120,7 @@ def get_tokens(prediction, rev_vocab):
     return [rev_vocab[w] for context in prediction.question.contexts
                          for w in context]
 
-def print_prediction(prediction, rev_vocab, top_k=5, with_context=False, context_char_limit=500):
+def print_prediction(prediction, rev_vocab, postprocessor=None, with_context=False, context_char_limit=500):
     tokens = get_tokens(prediction, rev_vocab)
 
     print("Id:")
@@ -130,7 +130,10 @@ def print_prediction(prediction, rev_vocab, top_k=5, with_context=False, context
     print("Answers:")
     print_list(maybe_flatten_list(prediction.question.question_json["original_answers"]))
     print("Predicted Answers:")
-    print_list(zip(prediction.answer_strings[:top_k], prediction.answer_probs[:top_k]))
+    answers_probs = zip(prediction.answer_strings, prediction.answer_probs)
+    if postprocessor is not None:
+        answers_probs = postprocessor.process(answers_probs)
+    print_list(answers_probs)
     if with_context:
         print(prediction.question.paragraph_json["context_original_capitalization"][:context_char_limit])
     print()
