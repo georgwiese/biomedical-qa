@@ -70,10 +70,10 @@ def insert_answers(bioasq_json, answers):
 
                 question["exact_answer"] = [[s] for s in answer_strings]
 
-            elif question["type"] == "yesno":
+        if question["type"] == "yesno":
 
-                # Strong baseline :)
-                question["exact_answer"] = "yes"
+            # Strong baseline :)
+            question["exact_answer"] = "yes"
 
         question["ideal_answer"] = ""
         questions.append(question)
