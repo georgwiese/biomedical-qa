@@ -42,6 +42,8 @@ def split_bioasq(bioasq_file_path, out_dir, dev_id_file):
 
     all_questions = deduplicate(all_questions)
 
+    os.makedirs(out_dir, exist_ok=True)
+
     if FLAGS.cross_validation_fold == 1:
         split_1_fold(all_questions, dev_id_file, out_dir)
     else:
@@ -75,10 +77,17 @@ def split_1_fold(all_questions, dev_id_file, out_dir):
             else:
                 dev_questions.append(question)
 
+    print("Train Questions:", len(train_questions))
+    print("Dev Questions:", len(dev_questions))
+    print()
+
+    with open(os.path.join(out_dir, "dev.json"), "w") as f:
+        json.dump({"questions": dev_questions}, f, indent=2)
+    with open(os.path.join(out_dir, "train.json"), "w") as f:
+        json.dump({"questions": train_questions}, f, indent=2)
+
 
 def split_k_fold(all_questions, out_dir):
-
-    os.makedirs(out_dir, exist_ok=True)
 
     all_questions = [q for q in all_questions if q["type"] in random_assign_types]
     k = FLAGS.cross_validation_fold

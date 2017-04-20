@@ -56,17 +56,24 @@ def insert_answers(bioasq_json, answers):
 
         if q_id in answers:
 
-            if question["type"] == "list":
-                answer_strings = [answer_string
-                                  for answer_string, answer_prob in list_postprocessor.process(answers[q_id])]
-            else:
-                answer_strings = [answer_string
-                                  for answer_string, answer_prob in factoid_postprocessor.process(answers[q_id])]
+            if question["type"] in ["factoid", "list"]:
 
-            if len(answer_strings) == 0:
-                answer_strings = [answers[q_id].answer_strings[0]]
+                if question["type"] == "list":
+                    answer_strings = [answer_string
+                                      for answer_string, answer_prob in list_postprocessor.process(answers[q_id])]
+                else:
+                    answer_strings = [answer_string
+                                      for answer_string, answer_prob in factoid_postprocessor.process(answers[q_id])]
 
-            question["exact_answer"] = [[s] for s in answer_strings]
+                if len(answer_strings) == 0:
+                    answer_strings = [answers[q_id].answer_strings[0]]
+
+                question["exact_answer"] = [[s] for s in answer_strings]
+
+        if question["type"] == "yesno":
+
+            # Strong baseline :)
+            question["exact_answer"] = "yes"
 
         question["ideal_answer"] = ""
         questions.append(question)
