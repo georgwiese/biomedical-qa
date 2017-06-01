@@ -132,6 +132,7 @@ with tf.Session(config=config) as sess:
         with open(FLAGS.transfer_model_config, 'rb') as f:
             transfer_model_config = pickle.load(f)
         transfer_model = model_from_config(transfer_model_config, devices[0:1])
+        original_transfer_model = transfer_model
 
         if FLAGS.with_chars:
             print("Use additional char-based word-embedder")
@@ -213,7 +214,7 @@ with tf.Session(config=config) as sess:
     sess.run(tf.global_variables_initializer())
     if FLAGS.transfer_model_path is not None:
         print("Loading transfer model from %s" % FLAGS.transfer_model_path)
-        transfer_model.model_saver.restore(sess, FLAGS.transfer_model_path)
+        original_transfer_model.model_saver.restore(sess, FLAGS.transfer_model_path)
 
     latest_checkpoint = tf.train.latest_checkpoint(train_dir)
     if FLAGS.init_model_path:
