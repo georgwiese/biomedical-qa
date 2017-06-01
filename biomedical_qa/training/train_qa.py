@@ -137,7 +137,7 @@ with tf.Session(config=config) as sess:
             print("Use additional char-based word-embedder")
             char_embedder = CharWordEmbedder(FLAGS.size, transfer_model.vocab, devices[0])
             FLAGS.embedder_lr = FLAGS.learning_rate
-            embedder = ConcatEmbedder([transfer_model, char_embedder])
+            transfer_model = ConcatEmbedder([transfer_model, char_embedder])
 
         print("Creating model of type %s..." % FLAGS.model_type)
         if FLAGS.model_type == "pointer":
