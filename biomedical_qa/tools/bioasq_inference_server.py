@@ -8,10 +8,9 @@ from biomedical_qa.data.bioasq_squad_builder import BioAsqSquadBuilder
 from biomedical_qa.data.entity_tagger import get_entity_tagger
 from biomedical_qa.inference.inference import Inferrer, get_session, get_model
 from biomedical_qa.sampling.squad import SQuADSampler
-from inference.bioasq import insert_answers, clean_bioasq_json
+from biomedical_qa.inference.bioasq import insert_answers, clean_bioasq_json
 
-tf.app.flags.DEFINE_string('bioasq_file', None, 'Path to the BioASQ JSON file.')
-tf.app.flags.DEFINE_string('out_file', None, 'Path to the output file.')
+tf.app.flags.DEFINE_integer('port', 5000, 'Port for the server.')
 tf.app.flags.DEFINE_string('model_config', None, 'Comma-separated list of paths to the model configs.')
 tf.app.flags.DEFINE_string("devices", "/cpu:0", "Use this device.")
 tf.app.flags.DEFINE_integer("batch_size", 32, "Number of examples in each batch.")
@@ -59,4 +58,4 @@ if __name__ == "__main__":
 
     tagger = get_entity_tagger()
 
-    app.run()
+    app.run(host="0.0.0.0", port=FLAGS.port)
