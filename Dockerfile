@@ -10,6 +10,7 @@ RUN pip3 install -r /requirements.txt
 
 ADD biomedical_qa /biomedical_qa
 ADD start_server.sh /biomedical_qa
+ADD final_model /model
 
 WORKDIR /biomedical_qa
 ENV PYTHONPATH /
