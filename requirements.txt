@@ -2,3 +2,5 @@ nltk
 tqdm
 git+git://github.com/kudkudak/word-embeddings-benchmarks.git
 matplotlib
+Flask
+requests
